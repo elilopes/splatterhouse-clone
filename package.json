@@ -7,10 +7,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w @splatterhouse/web",
-    "dev:api": "npm run dev -w @splatterhouse/api",
-    "build": "npm run build -w @splatterhouse/web && npm run build -w @splatterhouse/api",
-    "android:add": "npm run android:add -w @splatterhouse/web",
-    "android:sync": "npm run android:sync -w @splatterhouse/web"
+    "dev": "npm --prefix apps/web run dev",
+    "dev:api": "npm --prefix apps/API run dev",
+    "build": "npm --prefix apps/web run build && npm --prefix apps/API run build",
+    "lint": "tsc --noEmit -p apps/web/tsconfig.json && tsc --noEmit -p apps/API/tsconfig.json",
+    "android:add": "npm --prefix apps/web run android:add",
+    "android:sync": "npm --prefix apps/web run android:sync"
   }
 }
