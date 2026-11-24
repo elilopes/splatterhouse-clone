@@ -435,18 +435,21 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     if(attackCooldown.current>0)return;
     const px=player.current?.position.x??0;
     if(equipped==="pipe"){
-      // Choose one of the three requested combo rhythms on every button press.
+      // Every press starts exactly one randomized strike. Further strikes in the
+      // selected rhythm are allowed only while the player keeps the button held.
       const patterns:PipeAttackStyle[][]=[
         ["bat","bat","overhead","overhead"],
         ["bat","overhead","overhead"],
         ["bat","bat","bat","overhead","overhead"],
+        ["overhead","overhead","bat","bat"],
+        ["overhead","bat","bat"],
+        ["overhead","overhead","overhead","bat","bat"],
       ];
       const selected=patterns[Math.floor(Math.random()*patterns.length)];
       const steps=[...selected];
-      const total=steps.length*PIPE_STRIKE_DURATION;
       pipeCombo.current={steps,elapsed:0,stepIndex:0,hit:false};
-      attackCooldown.current=total+0.2;
-      motion.current.attackTime=total;
+      attackCooldown.current=PIPE_STRIKE_DURATION+0.12;
+      motion.current.attackTime=PIPE_STRIKE_DURATION;
       motion.current.attackStyle=steps[0];
       motion.current.attackProgress=0;
       return;
@@ -550,7 +553,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const doJump=()=>{if(!grounded.current)return;grounded.current=false;jumpVelocity.current=6.2;};
 
   useEffect(()=>{
-    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();keys.current.add(k);if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="j")doAttack();if(k==="k")doGrab();if(k===" "||k==="l")doJump();if(k==="e")doPickup();};
+    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();keys.current.add(k);if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="k")doGrab();if(k===" "||k==="l")doJump();if(k==="e")doPickup();};
     const up=(e:KeyboardEvent)=>keys.current.delete(e.key.toLowerCase());
     window.addEventListener("keydown",down);window.addEventListener("keyup",up);return()=>{window.removeEventListener("keydown",down);window.removeEventListener("keyup",up);};
   });
@@ -559,8 +562,9 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     if(paused||!player.current)return;
     motion.current.weapon=equipped;
     const c=controls.current;const prior=lastActions.current;
-    if(c.attack&&!prior.attack)doAttack();if(c.grab&&!prior.grab)doGrab();if(c.jump&&!prior.jump)doJump();if(c.pickup&&!prior.pickup)doPickup();
-    lastActions.current={attack:c.attack,grab:c.grab,jump:c.jump,pickup:c.pickup};
+    const attackHeld=c.attack||keys.current.has("j");
+    if(attackHeld&&!prior.attack)doAttack();if(c.grab&&!prior.grab)doGrab();if(c.jump&&!prior.jump)doJump();if(c.pickup&&!prior.pickup)doPickup();
+    lastActions.current={attack:attackHeld,grab:c.grab,jump:c.jump,pickup:c.pickup};
     attackCooldown.current=Math.max(0,attackCooldown.current-dt);grabCooldown.current=Math.max(0,grabCooldown.current-dt);
     const keyH=Number(keys.current.has("d")||keys.current.has("arrowright"))-Number(keys.current.has("a")||keys.current.has("arrowleft"));
     const keyD=Number(keys.current.has("s")||keys.current.has("arrowdown"))-Number(keys.current.has("w")||keys.current.has("arrowup"));
@@ -578,7 +582,9 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       const combo=pipeCombo.current;
       combo.elapsed+=dt;
       const nextIndex=Math.floor(combo.elapsed/PIPE_STRIKE_DURATION);
-      if(nextIndex>=combo.steps.length){
+      if(nextIndex>=combo.steps.length || (nextIndex>combo.stepIndex&&!attackHeld)){
+        // Releasing the button completes the current strike but prevents the
+        // remaining combo steps from starting.
         pipeCombo.current=null;
         motion.current.attackTime=0;
         motion.current.attackStyle=null;
@@ -587,7 +593,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
         if(nextIndex!==combo.stepIndex){combo.stepIndex=nextIndex;combo.hit=false;}
         const localProgress=(combo.elapsed-nextIndex*PIPE_STRIKE_DURATION)/PIPE_STRIKE_DURATION;
         const style=combo.steps[nextIndex];
-        motion.current.attackTime=(combo.steps.length*PIPE_STRIKE_DURATION)-combo.elapsed;
+        motion.current.attackTime=PIPE_STRIKE_DURATION-localProgress*PIPE_STRIKE_DURATION;
         motion.current.attackStyle=style;
         motion.current.attackProgress=localProgress;
         const impactAt=style==="bat"?0.48:0.56;
