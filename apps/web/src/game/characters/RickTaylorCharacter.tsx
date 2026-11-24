@@ -62,16 +62,16 @@ export default function RickTaylorCharacter({ motion }: Props) {
     root.current.position.y = motion.jumpHeight;
   });
   return (
-    <group ref={root} scale={1.04}>
+    <group ref={root} scale={1.04} dispose={null}>
       {/* Pelvis and trousers form a continuous silhouette */}
       {ellipsoid(sphere, materials.denim, [0,0.91,0], [0.34,0.28,0.25])}
-      <group ref={leftLeg} position={[-0.18,0.82,0]}>
-        {ellipsoid(sphere, materials.denim, [0,-0.24,0], [0.19,0.39,0.22])}
-        {ellipsoid(sphere, materials.denimLight, [0,-0.43,-0.005], [0.16,0.12,0.19])}
-        <mesh geometry={capsule} material={materials.denim} position={[0,-0.69,0]} rotation={[0,0,Math.PI]} castShadow />
-        {ellipsoid(sphere, materials.boot, [0,-0.99,-0.09], [0.18,0.13,0.29])}
+      <group ref={leftLeg} position={[-0.18,0.91,0]}>
+        {ellipsoid(sphere, materials.denim, [0,-0.20,0], [0.19,0.36,0.22])}
+        {ellipsoid(sphere, materials.denimLight, [0,-0.39,-0.005], [0.16,0.12,0.19])}
+        <mesh geometry={capsule} material={materials.denim} position={[0,-0.59,0]} rotation={[0,0,Math.PI]} castShadow />
+        {ellipsoid(sphere, materials.boot, [0,-0.82,-0.09], [0.18,0.13,0.29])}
       </group>
-      <group ref={rightLeg} position={[0.18,0.82,0]}>
+      <group ref={rightLeg} position={[0.18,0.91,0]}>
         {ellipsoid(sphere, materials.denim, [0,-0.24,0], [0.19,0.39,0.22])}
         {ellipsoid(sphere, materials.denimLight, [0,-0.43,-0.005], [0.16,0.12,0.19])}
         <mesh geometry={capsule} material={materials.denim} position={[0,-0.69,0]} rotation={[0,0,Math.PI]} castShadow />
