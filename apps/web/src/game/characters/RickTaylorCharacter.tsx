@@ -734,7 +734,7 @@ function HeldWeaponMesh({ id, muzzleRef }: { id: RickWeaponId; muzzleRef: React.
     );
   }
   return (
-    <group position={[0, -0.28, -0.02]} rotation={[-Math.PI / 2, 0, 0]}>
+    <group position={[0, -0.28, -0.02]} rotation={[-Math.PI / 2 - 0.16, 0, 0]}>
       <mesh position={[0, 0, -0.18]} rotation={[Math.PI / 2, 0, 0]} castShadow>
         <cylinderGeometry args={[0.045, 0.045, 1.05, 12]} />
         <meshStandardMaterial color="#777c7a" metalness={0.82} roughness={0.25} />
@@ -1230,18 +1230,24 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     let lElbowX = 0.72;
 
     if (activeWeapon === "shotgun") {
-      rShoulderX = -0.22 + gait * 0.1;
-      rElbowX = 1.65;
-      rShoulderZ = -0.04;
-      lShoulderX = 0.35 - gait * 0.1;
-      lElbowX = 1.25;
-      lShoulderZ = 0.24;
-      torsoRotY = 0.22;
+      // Both arms support the stock and fore-end at chest/shoulder height.
+      // The slightly elevated barrel line aims at enemy heads instead of the floor.
+      rShoulderX = -0.48 + gait * 0.06;
+      rElbowX = 1.34;
+      rShoulderZ = -0.02;
+      lShoulderX = 0.62 - gait * 0.06;
+      lElbowX = 1.08;
+      lShoulderZ = 0.18;
+      torsoRotY = 0.12;
       if (motion.attackTime > 0) {
-        const kick = Math.sin(p * Math.PI);
-        rShoulderX -= kick * 0.42;
-        rElbowX -= kick * 0.18;
-        torsoRotX -= kick * 0.16;
+        const recoil = p < 0.24
+          ? smoothstep(0, 0.24, p)
+          : 1 - smoothstep(0.24, 0.9, p);
+        rShoulderX -= recoil * 0.18;
+        rElbowX += recoil * 0.12;
+        lShoulderX -= recoil * 0.1;
+        torsoRotX += recoil * 0.12;
+        torsoRotY -= recoil * 0.08;
       }
     } else if (activeWeapon === "pipe") {
       // Pipe is held ready; each randomized strike drives the skinned torso and both arms.
