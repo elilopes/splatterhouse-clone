@@ -7,7 +7,7 @@ import RickTaylorCharacter, { type RickMotion } from "./characters/RickTaylorCha
 type Props = { onScore:(points:number)=>void; onKill:()=>void; paused:boolean; onStageChange:(stage:1|2)=>void };
 type WeaponId = "pipe" | "machete" | "shotgun";
 type EnemyKind = "crawler" | "brute" | "spitter";
-type BodyState = "alive" | "wallFlying" | "wallStuck" | "falling" | "fallen" | "grabLift" | "grabThrown" | "grabFallen" | "grabMelting" | "gone";
+type BodyState = "alive" | "wallFlying" | "wallStuck" | "falling" | "fallen" | "grabLift" | "grabThrown" | "grabFallen" | "grabMelting" | "pipeSlam" | "gone";
 type EnemyState = {
   id:number; x:number; y:number; z:number; health:number; alive:boolean; kind:EnemyKind;
   knocked:number; vx:number; vy:number; vz:number; fall:number; animation:number;
@@ -59,6 +59,9 @@ type WorldControls = {
   horizontal:number; depth:number; attack:boolean; grab:boolean; jump:boolean; pickup:boolean;
 };
 type WorldProps = Props & { controls:React.MutableRefObject<WorldControls> };
+type PipeAttackStyle = "bat" | "overhead";
+type PipeCombo = { steps:PipeAttackStyle[]; elapsed:number; stepIndex:number; hit:boolean };
+const PIPE_STRIKE_DURATION = 0.72;
 
 function FleshyWall() {
   const lobes = useMemo(()=>Array.from({length:114},(_,i)=>({
@@ -293,7 +296,8 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const triggeredWaves=useRef(new Set<number>());
   const enemies=useRef<EnemyState[]>(initialEnemies.map(e=>({...e})));
   const pickups=useRef<PickupState[]>(initialPickups.map(p=>({...p})));
-  const motion=useRef<RickMotion>({moving:false,attackTime:0,grabTime:0,jumpHeight:0,weapon:null});
+  const motion=useRef<RickMotion>({moving:false,attackTime:0,attackStyle:null,attackProgress:0,grabTime:0,jumpHeight:0,weapon:null});
+  const pipeCombo=useRef<PipeCombo|null>(null);
   const [phase,setPhase]=useState<1|2>(1);
   const [equipped,setEquipped]=useState<WeaponId|null>(null);
   const [ammo,setAmmo]=useState(16);
@@ -381,11 +385,63 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     }
   };
 
+  const applyPipeImpact=(style:PipeAttackStyle)=>{
+    if(!player.current)return;
+    const e=nearest(2.8,1.8);
+    if(!e)return;
+    const px=player.current.position.x;
+    if((e.x-px)*facing.current < -0.4)return;
+
+    e.alive=false;
+    e.grabTimer=0;
+    e.fall=facing.current;
+    e.vx=0;e.vy=0;e.vz=0;
+    if(style==="bat"){
+      // Baseball-bat arc: launch the creature backward into the fleshy wall or a foreground tree.
+      e.bodyState="wallFlying";
+      e.targetZ=targetWallZ(e.x);
+      e.vx=facing.current*2.8;
+      e.vy=5.8;
+      e.vz=-17.5;
+      e.stickRot=(Math.random()-0.5)*0.5;
+      spawnGore(e.x,1.25,e.z,18,5.4);
+      addBloodPool(e.x,e.z,0.82);
+    }else{
+      // Overhead pipe strike: the monster is driven down into the ground.
+      e.bodyState="pipeSlam";
+      e.y=0.38;
+      spawnGore(e.x,1.0,e.z,20,4.8);
+      addBloodPool(e.x,e.z,0.95);
+    }
+    onKill();
+    onScore(100);
+    setEnemyVersion(v=>v+1);
+  };
+
   const doAttack=()=>{
     if(attackCooldown.current>0)return;
-    attackCooldown.current=equipped==="shotgun"?0.62:equipped==="pipe"?0.74:equipped==="machete"?0.48:0.42;
-    motion.current.attackTime=equipped==="shotgun"?0.34:equipped==="pipe"?0.68:equipped==="machete"?0.44:0.36;
     const px=player.current?.position.x??0;
+    if(equipped==="pipe"){
+      // Choose one of the three requested combo rhythms on every button press.
+      const patterns:PipeAttackStyle[][]=[
+        ["bat","bat","overhead","overhead"],
+        ["bat","overhead","overhead"],
+        ["bat","bat","bat","overhead","overhead"],
+      ];
+      const selected=patterns[Math.floor(Math.random()*patterns.length)];
+      const steps=[...selected];
+      const total=steps.length*PIPE_STRIKE_DURATION;
+      pipeCombo.current={steps,elapsed:0,stepIndex:0,hit:false};
+      attackCooldown.current=total+0.2;
+      motion.current.attackTime=total;
+      motion.current.attackStyle=steps[0];
+      motion.current.attackProgress=0;
+      return;
+    }
+    attackCooldown.current=equipped==="shotgun"?0.62:equipped==="machete"?0.48:0.42;
+    motion.current.attackTime=equipped==="shotgun"?0.34:equipped==="machete"?0.44:0.36;
+    motion.current.attackStyle=null;
+    motion.current.attackProgress=0;
 
     if(equipped==="shotgun"){
       if(ammo<=0)return;
@@ -505,7 +561,34 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       player.current.rotation.y=facing.current>0?-Math.PI/2:Math.PI/2;
     }
     if(!grounded.current){motion.current.jumpHeight=Math.max(0,motion.current.jumpHeight+jumpVelocity.current*dt);jumpVelocity.current-=16.5*dt;if(motion.current.jumpHeight<=0){motion.current.jumpHeight=0;jumpVelocity.current=0;grounded.current=true;}}
-    motion.current.attackTime=Math.max(0,motion.current.attackTime-dt);motion.current.grabTime=Math.max(0,motion.current.grabTime-dt);
+    if(pipeCombo.current){
+      const combo=pipeCombo.current;
+      combo.elapsed+=dt;
+      const nextIndex=Math.floor(combo.elapsed/PIPE_STRIKE_DURATION);
+      if(nextIndex>=combo.steps.length){
+        pipeCombo.current=null;
+        motion.current.attackTime=0;
+        motion.current.attackStyle=null;
+        motion.current.attackProgress=0;
+      }else{
+        if(nextIndex!==combo.stepIndex){combo.stepIndex=nextIndex;combo.hit=false;}
+        const localProgress=(combo.elapsed-nextIndex*PIPE_STRIKE_DURATION)/PIPE_STRIKE_DURATION;
+        const style=combo.steps[nextIndex];
+        motion.current.attackTime=(combo.steps.length*PIPE_STRIKE_DURATION)-combo.elapsed;
+        motion.current.attackStyle=style;
+        motion.current.attackProgress=localProgress;
+        const impactAt=style==="bat"?0.48:0.56;
+        if(!combo.hit&&localProgress>=impactAt){
+          combo.hit=true;
+          applyPipeImpact(style);
+        }
+      }
+    }else{
+      motion.current.attackTime=Math.max(0,motion.current.attackTime-dt);
+      motion.current.attackStyle=null;
+      motion.current.attackProgress=0;
+    }
+    motion.current.grabTime=Math.max(0,motion.current.grabTime-dt);
     const px=player.current.position.x, pz=player.current.position.z;
 
     if(phase===1){
@@ -606,6 +689,22 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
           });
         }
         if(e.grabTimer>=1.05){
+          e.bodyState="gone";
+          if(group)group.visible=false;
+          setEnemyVersion(v=>v+1);
+        }
+        return;
+      }
+      if(e.bodyState==="pipeSlam"){
+        e.grabTimer+=dt;
+        const sink=THREE.MathUtils.clamp(e.grabTimer/0.62,0,1);
+        const ease=sink*sink*(3-2*sink);
+        if(group){
+          group.position.set(e.x,THREE.MathUtils.lerp(0.34,-0.42,ease),e.z);
+          group.rotation.set(0.12*ease,0,e.fall*0.12*ease);
+          group.scale.set(1+0.12*ease,Math.max(0.025,1-0.94*ease),1+0.12*ease);
+        }
+        if(e.grabTimer>=0.62){
           e.bodyState="gone";
           if(group)group.visible=false;
           setEnemyVersion(v=>v+1);
