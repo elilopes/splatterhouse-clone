@@ -52,3 +52,14 @@ A interface inicial agora apresenta o botão **Iniciar jogo**. A primeira campan
 Controles: WASD ou setas para movimentar Rick; J para atacar; K para agarrar e arremessar inimigos; E para recolher uma arma próxima. A sequência da Fase 1 é mãos, cano, facão e escopeta. O cano empurra o corpo inteiro contra as paredes; o facão decapita os monstros; a escopeta explode suas cabeças. A entrada na porta da mansão inicia a segunda fase automaticamente.
 
 Os cenários e a versão de baixa qualidade de Rick são construídos proceduralmente com primitivas do Babylon.js. A Fase 1 já inclui inimigos com aproximação ao jogador, combate corpo a corpo, agarrão/arremesso, armas recolhíveis e efeitos de impacto construídos proceduralmente. A Fase 2 continua como arena interna 2,5D e será expandida com novos inimigos, objetos e rotas em etapas posteriores.
+
+
+## Inimigos procedurais
+
+A versão inicial utiliza três arquétipos 3D montados diretamente no Babylon.js, sem depender de modelos externos:
+
+- **Rastejante:** corpo baixo e alongado, costelas expostas, garras e deslocamento mais rápido.
+- **Brutamontes:** maior volume corporal, corcova, espinhos dorsais e três pontos de resistência.
+- **Cuspidor:** garganta/saco orgânico exposto e tentáculos, com silhueta própria para futura implementação de ataque à distância.
+
+Os inimigos possuem partes separadas e animação procedural básica de membros e cabeça. A estrutura é provisória e poderá ser substituída por modelos 3D com rig e animações próprias, preservando os arquétipos e a interface de combate.
