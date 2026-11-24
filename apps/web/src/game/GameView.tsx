@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
@@ -124,11 +124,10 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const facing=useRef(1);
   const attackCooldown=useRef(0),grabCooldown=useRef(0),jumpVelocity=useRef(0),grounded=useRef(true);
   const cameraTarget=useRef(new THREE.Vector3(-14,1.9,0));
-  const [enemyVersion,setEnemyVersion]=useState(0);
+  const [,setEnemyVersion]=useState(0);
   const lastActions=useRef({attack:false,grab:false,jump:false,pickup:false});
-  const kills=useRef(0);
   useEffect(()=>{camera.position.set(-14,3.6,-18);camera.lookAt(-14,1.8,0);},[camera]);
-  const kill=(enemy:EnemyState)=>{if(!enemy.alive)return;enemy.alive=false;kills.current++;onKill();onScore(100);setEnemyVersion(v=>v+1);};
+  const kill=(enemy:EnemyState)=>{if(!enemy.alive)return;enemy.alive=false;onKill();onScore(100);setEnemyVersion(v=>v+1);};
   const nearest=(range:number)=>{let result:EnemyState|null=null;let best=range;for(const e of enemies.current){if(!e.alive)continue;const d=Math.hypot(e.x-(player.current?.position.x??0),e.z-(player.current?.position.z??0));if(d<best){best=d;result=e;}}return result;};
   const doPickup=()=>{if(!player.current)return;const candidates=pickups.current.filter(p=>!p.collected);let best:PickupState|undefined;let distance=1.75;for(const p of candidates){const d=Math.hypot(p.x-player.current.position.x,p.z-player.current.position.z);if(d<distance){best=p;distance=d;}}if(best){best.collected=true;setEquipped(best.id);}};
   const doAttack=()=>{if(attackCooldown.current>0)return;attackCooldown.current=equipped==="shotgun"?0.7:0.48;motion.current.attackTime=0.34;if(equipped==="shotgun"){if(ammo<=0)return;setAmmo(a=>a-1);const e=nearest(7);if(e&&Math.sign(e.x-(player.current?.position.x??0))===facing.current)kill(e);return;}const e=nearest(equipped==="pipe"||equipped==="machete"?2:1.65);if(!e||Math.sign(e.x-(player.current?.position.x??0))!==facing.current)return;if(equipped==="pipe"){e.health=1;e.vx=facing.current*12;}else if(equipped==="machete"){e.health=0;kill(e);}else{e.health--;e.vx=facing.current*3.2;if(e.health<=0)kill(e);}};
@@ -186,8 +185,6 @@ export default function GameView({onScore,onKill,paused,onStageChange}:Props) {
   const joystickInput=useRef({x:0,y:0,pointerId:-1});
   const [knob,setKnob]=useState({x:0,y:0});
   const controls=useRef<WorldControls>({horizontal:0,depth:0,attack:false,grab:false,jump:false,pickup:false});
-  const callbacks=useRef({onScore,onKill,onStageChange});callbacks.current={onScore,onKill,onStageChange};
-  const pausedRef=useRef(paused);pausedRef.current=paused;
   const updateJoystick=(event:ReactPointerEvent<HTMLDivElement>)=>{const el=joystickRef.current;if(!el)return;const r=el.getBoundingClientRect();const dx=event.clientX-(r.left+r.width/2),dy=event.clientY-(r.top+r.height/2),radius=r.width*0.34,d=Math.hypot(dx,dy),scale=d>radius?radius/d:1;const x=dx*scale,y=dy*scale;joystickInput.current.x=x/radius;joystickInput.current.y=y/radius;setKnob({x,y});};
   const releaseJoystick=(event:ReactPointerEvent<HTMLDivElement>)=>{if(joystickInput.current.pointerId!==event.pointerId)return;joystickInput.current={x:0,y:0,pointerId:-1};setKnob({x:0,y:0});if(joystickRef.current?.hasPointerCapture(event.pointerId))joystickRef.current.releasePointerCapture(event.pointerId);};
   useEffect(()=>{const interval=window.setInterval(()=>{const c=controls.current;c.horizontal=joystickInput.current.x;c.depth=joystickInput.current.y;},16);return()=>window.clearInterval(interval);},[]);
