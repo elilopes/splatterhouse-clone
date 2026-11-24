@@ -9,7 +9,7 @@ import {
 } from "@babylonjs/core";
 
 /**
- * Rick low-quality procedural model.
+ * Rick higher-detail procedural placeholder model.
  * A complete, deliberately low-detail humanoid built from reusable primitives.
  * Keep the silhouette, mask and restrained blood placement consistent with the
  * future high-quality GLB model; this is a performance-oriented representation.
@@ -41,29 +41,29 @@ export class RickProcedural {
 
     // Main body: broad shoulders, compact torso and restrained muscle definition.
     this.ellipsoid("rick-pelvis", new Vector3(0, 1.02, 0), new Vector3(0.34, 0.25, 0.22), pants);
-    this.ellipsoid("rick-torso", new Vector3(0, 1.48, 0), new Vector3(0.43, 0.55, 0.25), skin);
-    this.ellipsoid("rick-chest", new Vector3(0, 1.72, -0.005), new Vector3(0.46, 0.27, 0.255), skin);
-    this.ellipsoid("rick-abdomen", new Vector3(0, 1.27, 0.012), new Vector3(0.34, 0.27, 0.215), skin);
+    this.ellipsoid("rick-torso", new Vector3(0, 1.49, 0), new Vector3(0.48, 0.57, 0.29), skin);
+    this.ellipsoid("rick-chest", new Vector3(0, 1.73, -0.005), new Vector3(0.53, 0.31, 0.30), skin);
+    this.ellipsoid("rick-abdomen", new Vector3(0, 1.27, 0.012), new Vector3(0.37, 0.29, 0.24), skin);
     // One shallow center crease only; no individual six-pack geometry.
     const torsoCrease = this.ellipsoid("rick-abdomen-crease", new Vector3(0, 1.29, -0.204), new Vector3(0.012, 0.17, 0.008), skinShadow);
     torsoCrease.isPickable = false;
 
     // Neck and head.
-    this.ellipsoid("rick-neck", new Vector3(0, 2.02, 0), new Vector3(0.15, 0.18, 0.15), skin);
-    this.ellipsoid("rick-head", new Vector3(0, 2.28, 0), new Vector3(0.245, 0.30, 0.22), skin);
+    this.ellipsoid("rick-neck", new Vector3(0, 2.03, 0), new Vector3(0.19, 0.20, 0.18), skin);
+    this.ellipsoid("rick-head", new Vector3(0, 2.34, 0), new Vector3(0.34, 0.39, 0.29), skin);
     // The mask is the key recognition feature: red-brown face plate, dark eye slots,
     // a simple brow ridge and a small row of pale teeth. It intentionally avoids
     // tiny spikes, pores and dense surface decoration in the low preset.
-    this.ellipsoid("rick-terror-mask", new Vector3(0, 2.29, -0.187), new Vector3(0.252, 0.255, 0.085), mask);
-    this.ellipsoid("rick-mask-brow", new Vector3(0, 2.43, -0.255), new Vector3(0.235, 0.055, 0.035), maskDark);
+    this.ellipsoid("rick-terror-mask", new Vector3(0, 2.34, -0.235), new Vector3(0.345, 0.315, 0.105), mask);
+    this.ellipsoid("rick-mask-brow", new Vector3(0, 2.48, -0.315), new Vector3(0.30, 0.075, 0.045), maskDark);
     for (const side of [-1, 1]) {
-      this.ellipsoid(`rick-mask-eye-${side}`, new Vector3(side * 0.092, 2.335, -0.266), new Vector3(0.061, 0.035, 0.018), maskDark);
-      this.ellipsoid(`rick-mask-cheek-${side}`, new Vector3(side * 0.145, 2.22, -0.245), new Vector3(0.075, 0.065, 0.028), maskDark);
+      this.ellipsoid(`rick-mask-eye-${side}`, new Vector3(side * 0.145, 2.385, -0.337), new Vector3(0.092, 0.052, 0.025), maskDark);
+      this.ellipsoid(`rick-mask-cheek-${side}`, new Vector3(side * 0.22, 2.27, -0.31), new Vector3(0.105, 0.095, 0.045), maskDark);
     }
-    this.ellipsoid("rick-mask-nose", new Vector3(0, 2.27, -0.285), new Vector3(0.045, 0.075, 0.025), maskDark);
-    this.ellipsoid("rick-mask-mouth", new Vector3(0, 2.17, -0.264), new Vector3(0.105, 0.043, 0.018), maskDark);
+    this.ellipsoid("rick-mask-nose", new Vector3(0, 2.31, -0.355), new Vector3(0.075, 0.10, 0.045), maskDark);
+    this.ellipsoid("rick-mask-mouth", new Vector3(0, 2.20, -0.345), new Vector3(0.16, 0.065, 0.03), maskDark);
     for (let i = -2; i <= 2; i++) {
-      this.ellipsoid(`rick-mask-tooth-${i}`, new Vector3(i * 0.035, 2.176, -0.284), new Vector3(0.012, 0.018, 0.009), bone);
+      this.ellipsoid(`rick-mask-tooth-${i}`, new Vector3(i * 0.041, 2.205, -0.371), new Vector3(0.019, 0.028, 0.014), bone);
     }
 
     // Arms: simple upper/lower volumes and fists, attached to shoulder pivots.
@@ -82,7 +82,7 @@ export class RickProcedural {
       const forearm = this.capsule(`rick-${label}-forearm`, 0.43, 0.115, skin);
       forearm.parent = pivot;
       forearm.position.set(direction * 0.06, -0.75, -0.005);
-      const fist = this.ellipsoid(`rick-${label}-fist`, new Vector3(direction * 0.07, -1.00, -0.025), new Vector3(0.13, 0.12, 0.12), skinShadow);
+      const fist = this.ellipsoid(`rick-${label}-fist`, new Vector3(direction * 0.07, -1.02, -0.025), new Vector3(0.17, 0.15, 0.15), skinShadow);
       fist.parent = pivot;
     }
 
@@ -150,12 +150,13 @@ export class RickProcedural {
   private material(name: string, color: Color3): StandardMaterial {
     const material = new StandardMaterial(name, this.scene);
     material.diffuseColor = color;
-    material.specularColor = new Color3(0.12, 0.12, 0.12);
+    material.specularColor = new Color3(0.22, 0.19, 0.17);
+    material.specularPower = 48;
     return material;
   }
 
   private ellipsoid(name: string, position: Vector3, scale: Vector3, material: StandardMaterial): Mesh {
-    const mesh = MeshBuilder.CreateSphere(name, { segments: 8, diameter: 1 }, this.scene);
+    const mesh = MeshBuilder.CreateSphere(name, { segments: 16, diameter: 1 }, this.scene);
     mesh.position.copyFrom(position);
     mesh.scaling.copyFrom(scale);
     mesh.material = material;
