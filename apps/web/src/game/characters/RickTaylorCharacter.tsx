@@ -219,16 +219,22 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
   useFrame((_, dt) => {
     if (!root.current) return;
     const t = performance.now() * 0.001;
-    const gait = motion.moving ? Math.sin(t * 10) : 0;
+    gaitPhase.current += dt * (motion.moving ? 8.4 : 0);
+    const phase = gaitPhase.current;
+    const stride = Math.sin(phase);
+    const oppositeStride = Math.sin(phase + Math.PI);
+    const swing = motion.moving ? Math.max(0, Math.cos(phase)) : 0;
+    const oppositeSwing = motion.moving ? Math.max(0, Math.cos(phase + Math.PI)) : 0;
+    const gait = motion.moving ? stride : 0;
     const activeWeapon = equippedWeapon ?? motion.weapon;
     const attackDur = activeWeapon === "shotgun" ? 0.34 : activeWeapon === "pipe" ? 0.68 : activeWeapon === "machete" ? 0.44 : 0.36;
     const p = motion.attackTime > 0 ? THREE.MathUtils.clamp(1 - motion.attackTime / attackDur, 0, 1) : 0;
     const grabProgress = motion.grabTime > 0 ? THREE.MathUtils.clamp(1 - motion.grabTime / 1.35, 0, 1) : 0;
     const grab = grabProgress > 0 ? Math.sin(grabProgress * Math.PI) : 0;
 
-    let torsoRotY = motion.moving ? gait * 0.06 : 0;
-    let torsoRotX = motion.moving ? 0.05 : 0;
-    let torsoRotZ = motion.moving ? gait * 0.025 : 0;
+    let torsoRotY = motion.moving ? gait * 0.045 : 0;
+    let torsoRotX = motion.moving ? 0.035 + swing * 0.025 : 0;
+    let torsoRotZ = motion.moving ? -gait * 0.035 : 0;
 
     let rShoulderX = gait * 0.52 + 0.10;
     let rShoulderZ = -0.08;
@@ -359,8 +365,10 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
       torso.current.rotation.z = THREE.MathUtils.damp(torso.current.rotation.z, torsoRotZ, 10, dt);
     }
 
-    if (leftLeg.current) leftLeg.current.rotation.x = THREE.MathUtils.damp(leftLeg.current.rotation.x, gait * 0.55, 10, dt);
-    if (rightLeg.current) rightLeg.current.rotation.x = THREE.MathUtils.damp(rightLeg.current.rotation.x, -gait * 0.55, 10, dt);
+    if (leftLeg.current) leftLeg.current.rotation.x = THREE.MathUtils.damp(leftLeg.current.rotation.x, motion.moving ? stride * 0.48 : 0.015 * Math.sin(t), 12, dt);
+    if (rightLeg.current) rightLeg.current.rotation.x = THREE.MathUtils.damp(rightLeg.current.rotation.x, motion.moving ? oppositeStride * 0.48 : -0.015 * Math.sin(t), 12, dt);
+    if (leftShin.current) leftShin.current.rotation.x = THREE.MathUtils.damp(leftShin.current.rotation.x, motion.moving ? -swing * 0.82 : 0, 14, dt);
+    if (rightShin.current) rightShin.current.rotation.x = THREE.MathUtils.damp(rightShin.current.rotation.x, motion.moving ? -oppositeSwing * 0.82 : 0, 14, dt);
 
     if (leftArm.current) {
       leftArm.current.rotation.x = THREE.MathUtils.damp(leftArm.current.rotation.x, lShoulderX, 22, dt);
@@ -393,17 +401,21 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
       <group ref={leftLeg} position={[-0.18,0.91,0]}>
         {ellipsoid(sphere, materials.denim, [0,-0.20,0], [0.19,0.36,0.22])}
         {ellipsoid(sphere, materials.denimLight, [0,-0.39,-0.005], [0.16,0.12,0.19])}
-        <mesh geometry={capsule} material={materials.denim} position={[0,-0.59,0]} rotation={[0,0,Math.PI]} castShadow />
-        {ellipsoid(sphere, materials.boot, [0,-0.82,-0.09], [0.18,0.13,0.29])}
-        {ellipsoid(sphere, materials.bootSole, [0,-0.925,-0.09], [0.185,0.035,0.295])}
+        <group ref={leftShin} position={[0,-0.43,0]}>
+          <mesh geometry={capsule} material={materials.denim} position={[0,-0.16,0]} rotation={[0,0,Math.PI]} castShadow />
+          {ellipsoid(sphere, materials.boot, [0,-0.39,-0.09], [0.18,0.13,0.29])}
+          {ellipsoid(sphere, materials.bootSole, [0,-0.495,-0.09], [0.185,0.035,0.295])}
+        </group>
         {[-0.46,-0.51].map((y,i)=><mesh key={i} position={[0,y,-0.185]} rotation={[0,0,i===0?0.1:-0.1]}><boxGeometry args={[0.2,0.012,0.012]}/><meshStandardMaterial color="#91a7c4" roughness={0.88}/></mesh>)}
         <mesh position={[0,-0.77,-0.29]}><boxGeometry args={[0.11,0.014,0.012]}/><meshStandardMaterial color="#91a7c4" roughness={0.88}/></mesh>
       </group>
       <group ref={rightLeg} position={[0.18,0.91,0]}>
         {ellipsoid(sphere, materials.denim, [0,-0.20,0], [0.19,0.36,0.22])}
         {ellipsoid(sphere, materials.denimLight, [0,-0.39,-0.005], [0.16,0.12,0.19])}
-        <mesh geometry={capsule} material={materials.denim} position={[0,-0.59,0]} rotation={[0,0,Math.PI]} castShadow />
-        {ellipsoid(sphere, materials.boot, [0,-0.82,-0.09], [0.18,0.13,0.29])}
+        <group ref={rightShin} position={[0,-0.43,0]}>
+          <mesh geometry={capsule} material={materials.denim} position={[0,-0.16,0]} rotation={[0,0,Math.PI]} castShadow />
+          {ellipsoid(sphere, materials.boot, [0,-0.39,-0.09], [0.18,0.13,0.29])}
+        </group>
       </group>
       {/* A single high-density anatomical surface replaces the stacked chest/abdominal primitives. */}
       <group ref={torso} position={[0,1.05,0]}>
