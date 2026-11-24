@@ -64,7 +64,7 @@ export default function App() {
             <aside className="side-panel">
               <span className="eyebrow">{currentPhase===1?"FASE 01 · EXTERIOR":"FASE 02 · INTERIOR"}</span>
               <h2>{currentPhase===1?"O terreno da mansão":"Dentro da mansão"}</h2>
-              <p>{currentPhase===1?"Atravesse o muro gosmento, avance pela área das árvores e alcance a porta principal da mansão.":"Explore o salão da mansão em perspectiva 2,5D. O ambiente interno será expandido com inimigos, objetos e novas rotas."}</p>
+              {currentPhase===2 && <p>Explore o salão da mansão em perspectiva 2,5D. O ambiente interno será expandido com inimigos, objetos e novas rotas.</p>}
               {currentPhase===1?<div className="stage-list"><span className="active">01 · Muro gosmento</span><span>02 · Bosque de árvores</span><span>03 · Frente da mansão</span></div>:<div className="stage-list"><span className="active">01 · Salão principal</span><span>02 · Próximas salas (futuro)</span></div>}
               <div className="stat"><span>Checkpoint</span><b>{progress.checkpoint}</b></div>
               <div className="stat"><span>Eliminações</span><b>{progress.totalKills}</b></div>
