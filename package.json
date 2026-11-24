@@ -1,0 +1,16 @@
+{
+  "name": "splatterhouse",
+  "private": true,
+  "version": "0.2.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @splatterhouse/web",
+    "dev:api": "npm run dev -w @splatterhouse/api",
+    "build": "npm run build -w @splatterhouse/web && npm run build -w @splatterhouse/api",
+    "android:add": "npm run android:add -w @splatterhouse/web",
+    "android:sync": "npm run android:sync -w @splatterhouse/web"
+  }
+}
