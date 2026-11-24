@@ -416,6 +416,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const motion=useRef<RickMotion>({moving:false,attackTime:0,attackStyle:null,attackProgress:0,grabTime:0,jumpHeight:0,weapon:null});
   const pipeCombo=useRef<PipeCombo|null>(null);
   const [phase,setPhase]=useState<1|2>(1);
+  const [initialEnemiesVisible,setInitialEnemiesVisible]=useState(false);
   const [equipped,setEquipped]=useState<WeaponId|null>(null);
   const [ammo,setAmmo]=useState(16);
   const facing=useRef(1);
@@ -424,6 +425,11 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const [,setEnemyVersion]=useState(0);
   const lastActions=useRef({attack:false,grab:false,jump:false,pickup:false});
   const keys=useRef(new Set<string>());
+
+  useEffect(()=>{
+    const spawnTimer=window.setTimeout(()=>setInitialEnemiesVisible(true),2000);
+    return ()=>window.clearTimeout(spawnTimer);
+  },[]);
 
   useEffect(()=>{
     camera.position.set(-24,4.6,18);
@@ -750,7 +756,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       if(close)doPickup();
 
       const spawnWave = (waveId:number, triggerX:number, list:{x:number;z:number;kind:EnemyKind}[]) => {
-        if(px>=triggerX && !triggeredWaves.current.has(waveId)){
+        if(initialEnemiesVisible && px>=triggerX && !triggeredWaves.current.has(waveId)){
           triggeredWaves.current.add(waveId);
           list.forEach((s,idx)=>enemies.current.push(makeEnemy(nextEnemyId.current++, s.x, s.z, s.kind, idx*1.3, true)));
           setEnemyVersion(v=>v+1);
@@ -766,6 +772,8 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
 
     enemies.current.forEach((e)=>{
       const group=enemyGroups.current[e.id];
+      // Keep the initial Phase 1 enemies hidden and inactive during the opening delay.
+      if(phase===1 && e.id<=14 && !initialEnemiesVisible)return;
       if(e.bodyState==="grabLift"){
         e.grabTimer+=dt;
         const liftProgress=THREE.MathUtils.clamp(e.grabTimer/0.62,0,1);
@@ -1038,7 +1046,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       </mesh>
     ))}
 
-    {enemies.current.map((e)=>(e.alive||e.bodyState!=="alive")&&<group key={e.id} ref={node=>{enemyGroups.current[e.id]=node;}} position={[e.x,e.y,e.z]}>
+    {enemies.current.map((e)=>(e.alive||e.bodyState!=="alive")&&(phase!==1||e.id>14||initialEnemiesVisible)&&<group key={e.id} ref={node=>{enemyGroups.current[e.id]=node;}} position={[e.x,e.y,e.z]}>
       <EnemyModel kind={e.kind} headless={e.headless} dissolve={e.bodyState==="grabMelting" ? THREE.MathUtils.clamp(e.grabTimer/1.05,0,1) : 0}/>
       {e.bodyState==="wallStuck"&&<mesh position={[0,0.95,-0.25]}><circleGeometry args={[1.05,16]}/><meshStandardMaterial color="#4a0911" roughness={0.35}/></mesh>}
     </group>)}
