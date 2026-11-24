@@ -7,11 +7,11 @@ import RickTaylorCharacter, { type RickMotion } from "./characters/RickTaylorCha
 type Props = { onScore:(points:number)=>void; onKill:()=>void; paused:boolean; onStageChange:(stage:1|2)=>void };
 type WeaponId = "pipe" | "machete" | "shotgun";
 type EnemyKind = "crawler" | "brute" | "spitter";
-type BodyState = "alive" | "wallFlying" | "wallStuck" | "falling" | "fallen";
+type BodyState = "alive" | "wallFlying" | "wallStuck" | "falling" | "fallen" | "grabLift" | "grabThrown" | "grabFallen" | "grabMelting" | "gone";
 type EnemyState = {
   id:number; x:number; y:number; z:number; health:number; alive:boolean; kind:EnemyKind;
   knocked:number; vx:number; vy:number; vz:number; fall:number; animation:number;
-  activated:boolean; bodyState:BodyState; stickRot:number; targetZ:number; headless:boolean;
+  activated:boolean; bodyState:BodyState; stickRot:number; targetZ:number; headless:boolean; grabTimer:number;
 };
 type SeveredHead = {
   id:number; kind:EnemyKind; x:number; y:number; z:number;
@@ -26,7 +26,7 @@ type CombatEffect = {
 
 const makeEnemy = (id:number, x:number, z:number, kind:EnemyKind, animation:number, activated=false): EnemyState => ({
   id, x, y:0, z, health:kind==="brute"?3:2, alive:true, kind, knocked:0,
-  vx:0, vy:0, vz:0, fall:0, animation, activated, bodyState:"alive", stickRot:0, targetZ:-1.72, headless:false
+  vx:0, vy:0, vz:0, fall:0, animation, activated, bodyState:"alive", stickRot:0, targetZ:-1.72, headless:false, grabTimer:0
 });
 
 const initialEnemies: EnemyState[] = [
@@ -218,11 +218,11 @@ function EnemyHeadMesh({ kind }: {kind:EnemyKind}) {
   </group>;
 }
 
-function EnemyModel({ kind, headless=false }: {kind:EnemyKind; headless?:boolean}) {
+function EnemyModel({ kind, headless=false, dissolve=0 }: {kind:EnemyKind; headless?:boolean; dissolve?:number}) {
   const brute=kind==="brute", crawler=kind==="crawler";
   const flesh=brute?"#75513d":kind==="spitter"?"#a05c43":"#873b36";
   return <group>
-    <mesh position={[0,crawler?0.62:0.92,0]} scale={[brute?0.62:crawler?0.55:0.46,crawler?0.36:0.62,0.36]} castShadow><sphereGeometry args={[1,24,18]}/><meshStandardMaterial color={flesh} roughness={0.68}/></mesh>
+    <mesh position={[0,crawler?0.62:0.92,0]} scale={[brute?0.62:crawler?0.55:0.46,crawler?0.36:0.62,0.36]} castShadow><sphereGeometry args={[1,24,18]}/><meshStandardMaterial color={flesh} roughness={0.68} transparent={dissolve>0} opacity={1-dissolve}/></mesh>
     {!headless ? (
       <group position={[0,crawler?1.05:1.65,0.04]}>
         <EnemyHeadMesh kind={kind}/>
@@ -234,8 +234,8 @@ function EnemyModel({ kind, headless=false }: {kind:EnemyKind; headless?:boolean
       </mesh>
     )}
     {[-1,1].map(side=><group key={side}>
-      <mesh position={[side*(brute?0.58:0.47),crawler?0.56:0.9,0]} rotation={[0,0,side*0.55]}><capsuleGeometry args={[brute?0.19:0.13,0.55,6,12]}/><meshStandardMaterial color={flesh}/></mesh>
-      <mesh position={[side*0.24,crawler?0.22:0.36,-0.06]} rotation={[0,0,side*0.25]}><capsuleGeometry args={[0.14,0.45,6,12]}/><meshStandardMaterial color={flesh}/></mesh>
+      <mesh position={[side*(brute?0.58:0.47),crawler?0.56:0.9,0]} rotation={[0,0,side*0.55]}><capsuleGeometry args={[brute?0.19:0.13,0.55,6,12]}/><meshStandardMaterial color={flesh} transparent={dissolve>0} opacity={1-dissolve}/></mesh>
+      <mesh position={[side*0.24,crawler?0.22:0.36,-0.06]} rotation={[0,0,side*0.25]}><capsuleGeometry args={[0.14,0.45,6,12]}/><meshStandardMaterial color={flesh} transparent={dissolve>0} opacity={1-dissolve}/></mesh>
     </group>)}
     {brute&&Array.from({length:5},(_,i)=><mesh key={i} position={[-0.36+i*0.18,1.62,-0.1]} rotation={[0,0,-0.25]}><coneGeometry args={[0.12,0.48,7]}/><meshStandardMaterial color="#49332d"/></mesh>)}
     {kind==="spitter"&&<mesh position={[0.28,1.05,0.1]} scale={[0.28,0.45,0.27]}><sphereGeometry args={[1,20,16]}/><meshStandardMaterial color="#b46b4c" roughness={0.35}/></mesh>}
@@ -438,12 +438,21 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
 
   const doGrab=()=>{
     if(grabCooldown.current>0||!player.current)return;
-    grabCooldown.current=1.15;
-    const e=nearest(1.8);
-    motion.current.grabTime=0.46;
+    const e=nearest(1.95,1.65);
     if(!e)return;
-    e.knocked=1.25;e.fall=-facing.current;e.vx=-facing.current*5.8;e.vz=(e.z-player.current.position.z)*1.8;
-    spawnGore(e.x,1.0,e.z,10,3.8);
+    if((e.x-player.current.position.x)*facing.current < -0.25)return;
+    grabCooldown.current=1.35;
+    motion.current.grabTime=1.35;
+    // Hold the enemy in front of Rick before applying the backward throw impulse.
+    e.bodyState="grabLift";
+    e.alive=false;
+    e.grabTimer=0;
+    e.fall=-facing.current;
+    e.vx=0;e.vy=0;e.vz=0;
+    e.x=player.current.position.x+facing.current*0.82;
+    e.z=player.current.position.z;
+    e.y=0.45;
+    setEnemyVersion(v=>v+1);
   };
   const doJump=()=>{if(!grounded.current)return;grounded.current=false;jumpVelocity.current=6.2;};
 
@@ -496,6 +505,88 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
 
     enemies.current.forEach((e)=>{
       const group=enemyGroups.current[e.id];
+      if(e.bodyState==="grabLift"){
+        e.grabTimer+=dt;
+        const liftProgress=THREE.MathUtils.clamp(e.grabTimer/0.62,0,1);
+        const ease=liftProgress*liftProgress*(3-2*liftProgress);
+        const pX=player.current!.position.x;
+        const pZ=player.current!.position.z;
+        e.x=THREE.MathUtils.lerp(pX+facing.current*0.78,pX+facing.current*0.92,ease);
+        e.z=THREE.MathUtils.lerp(pZ,pZ-0.08,ease);
+        e.y=0.48+ease*1.38;
+        if(group){
+          group.position.set(e.x,e.y,e.z);
+          group.rotation.set(0,0,THREE.MathUtils.lerp(0,-facing.current*0.18,ease));
+          group.scale.set(1,1,1);
+        }
+        if(e.grabTimer>=0.62){
+          e.bodyState="grabThrown";
+          e.grabTimer=0;
+          // Strong impulse sends the monster behind Rick, away from the direction he faces.
+          e.vx=-facing.current*7.4;
+          e.vy=5.1;
+          e.vz=(pZ-e.z)*1.2;
+        }
+        return;
+      }
+      if(e.bodyState==="grabThrown"){
+        e.grabTimer+=dt;
+        e.x+=e.vx*dt;e.y+=e.vy*dt;e.z+=e.vz*dt;
+        e.vy-=17.5*dt;
+        e.vx*=Math.max(0,1-dt*0.32);
+        e.vz*=Math.max(0,1-dt*1.8);
+        if(group){
+          group.position.set(e.x,Math.max(0.18,e.y),e.z);
+          group.rotation.z=THREE.MathUtils.damp(group.rotation.z,e.fall*1.42,9,dt);
+          group.rotation.x=THREE.MathUtils.damp(group.rotation.x,0.18,6,dt);
+        }
+        if(e.y<=0.18&&e.vy<0){
+          e.y=0.18;e.vy=0;e.vx=0;e.vz=0;
+          e.bodyState="grabFallen";e.grabTimer=0;
+          if(group){group.position.set(e.x,0.18,e.z);group.rotation.set(0,0,e.fall*1.42);}
+          // Blood burst is synchronized with the body hitting the floor.
+          spawnGore(e.x,0.62,e.z,24,5.2);
+          addBloodPool(e.x,e.z,1.18);
+          setEnemyVersion(v=>v+1);
+        }
+        return;
+      }
+      if(e.bodyState==="grabFallen"){
+        e.grabTimer+=dt;
+        if(group){
+          group.position.set(e.x,0.18,e.z);
+          group.rotation.set(0,0,e.fall*1.42);
+          group.scale.set(1,1,1);
+        }
+        if(e.grabTimer>=0.72){e.bodyState="grabMelting";e.grabTimer=0;}
+        return;
+      }
+      if(e.bodyState==="grabMelting"){
+        e.grabTimer+=dt;
+        const melt=THREE.MathUtils.clamp(e.grabTimer/1.05,0,1);
+        if(group){
+          group.position.set(e.x,0.035+(1-melt)*0.12,e.z);
+          group.rotation.set(0,0,e.fall*1.42);
+          group.scale.set(1+0.12*melt,Math.max(0.015,1-melt),1+0.12*melt);
+          group.traverse((child)=>{
+            if((child as THREE.Mesh).isMesh){
+              const mesh=child as THREE.Mesh;
+              const mats=Array.isArray(mesh.material)?mesh.material:[mesh.material];
+              mats.forEach((mat)=>{
+                const material=mat as THREE.MeshStandardMaterial;
+                if("opacity" in material){material.transparent=true;material.opacity=1-melt;}
+              });
+            }
+          });
+        }
+        if(e.grabTimer>=1.05){
+          e.bodyState="gone";
+          if(group)group.visible=false;
+          setEnemyVersion(v=>v+1);
+        }
+        return;
+      }
+      if(e.bodyState==="gone")return;
       if(e.bodyState==="wallFlying"){
         e.x+=e.vx*dt; e.y+=e.vy*dt; e.z+=e.vz*dt; e.vy-=9.8*dt;
         if(group){
@@ -641,7 +732,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     ))}
 
     {enemies.current.map((e)=>(e.alive||e.bodyState!=="alive")&&<group key={e.id} ref={node=>{enemyGroups.current[e.id]=node;}} position={[e.x,e.y,e.z]}>
-      <EnemyModel kind={e.kind} headless={e.headless}/>
+      <EnemyModel kind={e.kind} headless={e.headless} dissolve={e.bodyState==="grabMelting" ? THREE.MathUtils.clamp(e.grabTimer/1.05,0,1) : 0}/>
       {e.bodyState==="wallStuck"&&<mesh position={[0,0.95,-0.25]}><circleGeometry args={[1.05,16]}/><meshStandardMaterial color="#4a0911" roughness={0.35}/></mesh>}
     </group>)}
 
