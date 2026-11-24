@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "npm --prefix apps/web run dev",
     "dev:api": "npm --prefix apps/API run dev",
-    "build": "npm --prefix apps/web run build && npm --prefix apps/API run build",
+    "build": "npm --prefix apps/web run build && npm --prefix apps/API run build && node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true});fs.cpSync('apps/web/dist','dist',{recursive:true});\"",
+    "preview": "npm --prefix apps/web run preview",
     "lint": "tsc --noEmit -p apps/web/tsconfig.json && tsc --noEmit -p apps/API/tsconfig.json",
     "android:add": "npm --prefix apps/web run android:add",
     "android:sync": "npm --prefix apps/web run android:sync"
