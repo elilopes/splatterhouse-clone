@@ -273,7 +273,7 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
       if(enemy.health<=0)killEnemy(enemy);
     };
     const pickupWeapon=()=>{
-      const candidate=pickups.find(p=>!p.collected&&Vector3.Distance(player.position,p.root.position)<1.35);
+      const candidate=pickups.find(p=>!p.collected);\n      if(!candidate||Vector3.Distance(player.position,candidate.root.position)>=1.35)return;
       if(!candidate)return;
       candidate.collected=true;candidate.root.setEnabled(false);equipped=candidate.id;makeHeldWeapon(candidate.id);
     };
