@@ -14,6 +14,52 @@ export type RickMotion = {
 
 type Props = { motion: RickMotion; equippedWeapon?: RickWeaponId | null };
 
+
+/** One watertight torso/pelvis surface. Cross-sections are blended into a single
+ * high-resolution surface so the chest, waist and hips do not read as stacked primitives. */
+function createAnatomicalTorsoGeometry() {
+  const profile: Array<[number, number, number]> = [
+    [-0.29, 0.27, 0.205], [-0.20, 0.32, 0.225], [-0.08, 0.34, 0.225],
+    [0.08, 0.315, 0.215], [0.25, 0.355, 0.235], [0.43, 0.425, 0.255],
+    [0.59, 0.50, 0.265], [0.72, 0.48, 0.245], [0.83, 0.36, 0.205],
+    [0.94, 0.235, 0.175], [1.04, 0.17, 0.15]
+  ];
+  const rings = 72, segments = 96;
+  const positions: number[] = [], uvs: number[] = [], indices: number[] = [];
+  for (let iy = 0; iy <= rings; iy++) {
+    const v = iy / rings;
+    const y = THREE.MathUtils.lerp(profile[0][0], profile[profile.length - 1][0], v);
+    let k = 0;
+    while (k < profile.length - 2 && y > profile[k + 1][0]) k++;
+    const a = profile[k], b = profile[k + 1];
+    const f0 = THREE.MathUtils.clamp((y - a[0]) / (b[0] - a[0]), 0, 1);
+    const f = f0 * f0 * (3 - 2 * f0);
+    const rx = THREE.MathUtils.lerp(a[1], b[1], f);
+    const rz = THREE.MathUtils.lerp(a[2], b[2], f);
+    for (let ix = 0; ix <= segments; ix++) {
+      const u = ix / segments, angle = u * Math.PI * 2;
+      const front = Math.max(0, -Math.sin(angle));
+      const pectoral = Math.exp(-Math.pow((y - 0.57) / 0.20, 2)) * Math.pow(Math.abs(Math.cos(angle)), 2);
+      const abdominal = Math.exp(-Math.pow((y - 0.19) / 0.24, 2)) * Math.pow(Math.abs(Math.cos(angle)), 8);
+      const x = Math.cos(angle) * (rx + pectoral * 0.018 + abdominal * 0.008);
+      const z = Math.sin(angle) * (rz + front * pectoral * 0.012);
+      positions.push(x, y, z);
+      uvs.push(u, v);
+      if (iy < rings && ix < segments) {
+        const n = iy * (segments + 1) + ix;
+        indices.push(n, n + segments + 1, n + 1, n + 1, n + segments + 1, n + segments + 2);
+      }
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
 function ellipsoid(geometry: THREE.SphereGeometry, material: THREE.Material, position: [number,number,number], scale: [number,number,number]) {
   return <mesh geometry={geometry} material={material} position={position} scale={scale} castShadow receiveShadow />;
 }
@@ -82,7 +128,7 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
   const rightForearm = useRef<THREE.Group>(null);
   const leftLeg = useRef<THREE.Group>(null);
   const rightLeg = useRef<THREE.Group>(null);
-  const muzzleRef = useRef<THREE.Group>(null);
+  const muzzleRef = useRef<THREE.Group>(null);\n  const gaitPhase = useRef(0);\n  const leftShin = useRef<THREE.Group>(null);\n  const rightShin = useRef<THREE.Group>(null);
 
   const materials = useMemo(() => {
     const makeTexture = (base: string, fiber: string, seed: number) => {
@@ -127,8 +173,33 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
       return texture;
     };
     const skinSurface = makeSkinSurface(17);
-    const skin = new THREE.MeshPhysicalMaterial({ color: "#d0a087", map: skinMap, roughnessMap: skinSurface, bumpMap: skinSurface, bumpScale: 0.026, roughness: 0.48, clearcoat: 0.38, clearcoatRoughness: 0.24, sheen: 0.22, sheenRoughness: 0.48 });
-    const skinLight = new THREE.MeshPhysicalMaterial({ color: "#e0ad91", map: skinMap, roughnessMap: skinSurface, bumpMap: skinSurface, bumpScale: 0.022, roughness: 0.46, clearcoat: 0.42, clearcoatRoughness: 0.22, sheen: 0.2 });
+    const normalCanvas = document.createElement("canvas");
+    normalCanvas.width = normalCanvas.height = 512;
+    const normalCtx = normalCanvas.getContext("2d")!;
+    const heightData = skinSurface.image as HTMLCanvasElement;
+    const heightCtx = heightData.getContext("2d")!;
+    const heights = heightCtx.getImageData(0, 0, 512, 512).data;
+    const normalImage = normalCtx.createImageData(512, 512);
+    for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) {
+      const i = (y * 512 + x) * 4;
+      const l = heights[(y * 512 + ((x + 511) % 512)) * 4];
+      const r = heights[(y * 512 + ((x + 1) % 512)) * 4];
+      const u = heights[(((y + 511) % 512) * 512 + x) * 4];
+      const d = heights[(((y + 1) % 512) * 512 + x) * 4];
+      const nx = (l - r) / 255 * 2.2, ny = (u - d) / 255 * 2.2;
+      const len = Math.sqrt(nx * nx + ny * ny + 1);
+      normalImage.data[i] = (nx / len * 0.5 + 0.5) * 255;
+      normalImage.data[i + 1] = (ny / len * 0.5 + 0.5) * 255;
+      normalImage.data[i + 2] = (1 / len * 0.5 + 0.5) * 255;
+      normalImage.data[i + 3] = 255;
+    }
+    normalCtx.putImageData(normalImage, 0, 0);
+    const skinNormal = new THREE.CanvasTexture(normalCanvas);
+    skinNormal.wrapS = skinNormal.wrapT = THREE.RepeatWrapping;
+    skinNormal.repeat.set(1.5, 1.5);
+    skinNormal.anisotropy = 8;
+    const skin = new THREE.MeshPhysicalMaterial({ color: "#d0a087", map: skinMap, normalMap: skinNormal, normalScale: new THREE.Vector2(0.42, 0.42), roughnessMap: skinSurface, bumpMap: skinSurface, bumpScale: 0.012, displacementMap: skinSurface, displacementScale: 0.009, roughness: 0.48, clearcoat: 0.38, clearcoatRoughness: 0.24, sheen: 0.22, sheenRoughness: 0.48 });
+    const skinLight = new THREE.MeshPhysicalMaterial({ color: "#e0ad91", map: skinMap, normalMap: skinNormal, normalScale: new THREE.Vector2(0.38, 0.38), roughnessMap: skinSurface, bumpMap: skinSurface, bumpScale: 0.01, displacementMap: skinSurface, displacementScale: 0.007, roughness: 0.46, clearcoat: 0.42, clearcoatRoughness: 0.22, sheen: 0.2 });
     const denim = new THREE.MeshStandardMaterial({ color: "#ffffff", map: denimMap, roughness: 0.9 });
     const denimLight = new THREE.MeshStandardMaterial({ color: "#5276a7", map: denimMap, roughness: 0.88 });
     const mask = new THREE.MeshPhysicalMaterial({ color: "#e0ddd1", roughness: 0.42, metalness: 0.035, clearcoat: 0.35 });
@@ -142,27 +213,33 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     return { skin, skinLight, denim, denimLight, mask, maskShade, blood, sweat, boot, bootSole, seam, metal };
   }, []);
 
-  const sphere = useMemo(() => new THREE.SphereGeometry(1, 56, 40), []);
+  const sphere = useMemo(() => new THREE.SphereGeometry(1, 56, 40), []);\n  const anatomicalTorso = useMemo(() => createAnatomicalTorsoGeometry(), []);
   const capsule = useMemo(() => new THREE.CapsuleGeometry(0.12, 0.42, 12, 28), []);
 
   useFrame((_, dt) => {
     if (!root.current) return;
     const t = performance.now() * 0.001;
-    const gait = motion.moving ? Math.sin(t * 10) : 0;
+    gaitPhase.current += dt * (motion.moving ? 8.4 : 0);
+    const phase = gaitPhase.current;
+    const stride = Math.sin(phase);
+    const oppositeStride = Math.sin(phase + Math.PI);
+    const swing = motion.moving ? Math.max(0, Math.cos(phase)) : 0;
+    const oppositeSwing = motion.moving ? Math.max(0, Math.cos(phase + Math.PI)) : 0;
+    const gait = motion.moving ? stride : 0;
     const activeWeapon = equippedWeapon ?? motion.weapon;
     const attackDur = activeWeapon === "shotgun" ? 0.34 : activeWeapon === "pipe" ? 0.68 : activeWeapon === "machete" ? 0.44 : 0.36;
     const p = motion.attackTime > 0 ? THREE.MathUtils.clamp(1 - motion.attackTime / attackDur, 0, 1) : 0;
     const grabProgress = motion.grabTime > 0 ? THREE.MathUtils.clamp(1 - motion.grabTime / 1.35, 0, 1) : 0;
     const grab = grabProgress > 0 ? Math.sin(grabProgress * Math.PI) : 0;
 
-    let torsoRotY = motion.moving ? gait * 0.06 : 0;
-    let torsoRotX = motion.moving ? 0.05 : 0;
-    let torsoRotZ = motion.moving ? gait * 0.025 : 0;
+    let torsoRotY = motion.moving ? gait * 0.045 : 0;
+    let torsoRotX = motion.moving ? 0.035 + swing * 0.025 : 0;
+    let torsoRotZ = motion.moving ? -gait * 0.035 : 0;
 
-    let rShoulderX = gait * 0.35 + 0.12;
+    let rShoulderX = gait * 0.52 + 0.10;
     let rShoulderZ = -0.08;
     let rElbowX = 0.52;
-    let lShoulderX = -gait * 0.35 + 0.32;
+    let lShoulderX = -gait * 0.52 + 0.28;
     let lShoulderZ = 0.1;
     let lElbowX = 0.72;
 
@@ -282,14 +359,16 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     }
 
     if (torso.current) {
-      torso.current.position.y = 1.05 + (motion.moving ? Math.abs(gait) * 0.035 : Math.sin(t * 2.2) * 0.012);
+      torso.current.position.y = 1.05 + (motion.moving ? Math.abs(Math.sin(phase * 2)) * 0.045 : Math.sin(t * 1.7) * 0.009);
       torso.current.rotation.y = THREE.MathUtils.damp(torso.current.rotation.y, torsoRotY, 18, dt);
       torso.current.rotation.x = THREE.MathUtils.damp(torso.current.rotation.x, torsoRotX, 18, dt);
       torso.current.rotation.z = THREE.MathUtils.damp(torso.current.rotation.z, torsoRotZ, 10, dt);
     }
 
-    if (leftLeg.current) leftLeg.current.rotation.x = THREE.MathUtils.damp(leftLeg.current.rotation.x, gait * 0.55, 10, dt);
-    if (rightLeg.current) rightLeg.current.rotation.x = THREE.MathUtils.damp(rightLeg.current.rotation.x, -gait * 0.55, 10, dt);
+    if (leftLeg.current) leftLeg.current.rotation.x = THREE.MathUtils.damp(leftLeg.current.rotation.x, motion.moving ? stride * 0.48 : 0.015 * Math.sin(t), 12, dt);
+    if (rightLeg.current) rightLeg.current.rotation.x = THREE.MathUtils.damp(rightLeg.current.rotation.x, motion.moving ? oppositeStride * 0.48 : -0.015 * Math.sin(t), 12, dt);
+    if (leftShin.current) leftShin.current.rotation.x = THREE.MathUtils.damp(leftShin.current.rotation.x, motion.moving ? -swing * 0.82 : 0, 14, dt);
+    if (rightShin.current) rightShin.current.rotation.x = THREE.MathUtils.damp(rightShin.current.rotation.x, motion.moving ? -oppositeSwing * 0.82 : 0, 14, dt);
 
     if (leftArm.current) {
       leftArm.current.rotation.x = THREE.MathUtils.damp(leftArm.current.rotation.x, lShoulderX, 22, dt);
@@ -322,35 +401,25 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
       <group ref={leftLeg} position={[-0.18,0.91,0]}>
         {ellipsoid(sphere, materials.denim, [0,-0.20,0], [0.19,0.36,0.22])}
         {ellipsoid(sphere, materials.denimLight, [0,-0.39,-0.005], [0.16,0.12,0.19])}
-        <mesh geometry={capsule} material={materials.denim} position={[0,-0.59,0]} rotation={[0,0,Math.PI]} castShadow />
-        {ellipsoid(sphere, materials.boot, [0,-0.82,-0.09], [0.18,0.13,0.29])}
-        {ellipsoid(sphere, materials.bootSole, [0,-0.925,-0.09], [0.185,0.035,0.295])}
+        <group ref={leftShin} position={[0,-0.43,0]}>
+          <mesh geometry={capsule} material={materials.denim} position={[0,-0.16,0]} rotation={[0,0,Math.PI]} castShadow />
+          {ellipsoid(sphere, materials.boot, [0,-0.39,-0.09], [0.18,0.13,0.29])}
+          {ellipsoid(sphere, materials.bootSole, [0,-0.495,-0.09], [0.185,0.035,0.295])}
+        </group>
         {[-0.46,-0.51].map((y,i)=><mesh key={i} position={[0,y,-0.185]} rotation={[0,0,i===0?0.1:-0.1]}><boxGeometry args={[0.2,0.012,0.012]}/><meshStandardMaterial color="#91a7c4" roughness={0.88}/></mesh>)}
         <mesh position={[0,-0.77,-0.29]}><boxGeometry args={[0.11,0.014,0.012]}/><meshStandardMaterial color="#91a7c4" roughness={0.88}/></mesh>
       </group>
       <group ref={rightLeg} position={[0.18,0.91,0]}>
         {ellipsoid(sphere, materials.denim, [0,-0.20,0], [0.19,0.36,0.22])}
         {ellipsoid(sphere, materials.denimLight, [0,-0.39,-0.005], [0.16,0.12,0.19])}
-        <mesh geometry={capsule} material={materials.denim} position={[0,-0.59,0]} rotation={[0,0,Math.PI]} castShadow />
-        {ellipsoid(sphere, materials.boot, [0,-0.82,-0.09], [0.18,0.13,0.29])}
+        <group ref={rightShin} position={[0,-0.43,0]}>
+          <mesh geometry={capsule} material={materials.denim} position={[0,-0.16,0]} rotation={[0,0,Math.PI]} castShadow />
+          {ellipsoid(sphere, materials.boot, [0,-0.39,-0.09], [0.18,0.13,0.29])}
+        </group>
       </group>
-      {/* Broad, tapered torso; large overlapping volumes blend visually with smooth shading */}
+      {/* A single high-density anatomical surface replaces the stacked chest/abdominal primitives. */}
       <group ref={torso} position={[0,1.05,0]}>
-        {ellipsoid(sphere, materials.skin, [0,0.34,0], [0.43,0.58,0.27])}
-        {ellipsoid(sphere, materials.skinLight, [0,0.57,-0.025], [0.55,0.34,0.30])}
-        {ellipsoid(sphere, materials.skin, [0,0.12,-0.015], [0.34,0.32,0.235])}
-        {ellipsoid(sphere, materials.skinLight, [-0.17,0.56,-0.19], [0.29,0.205,0.145])}
-        {ellipsoid(sphere, materials.skinLight, [0.17,0.56,-0.19], [0.29,0.205,0.145])}
-        {ellipsoid(sphere, materials.skin, [0,0.79,0], [0.25,0.23,0.22])}
-        {/* Anatomical clavicles, pectoral separation and sculpted abdominal planes */}
-        {ellipsoid(sphere, materials.skinLight, [-0.19,0.78,-0.12], [0.25,0.09,0.11],)}
-        {ellipsoid(sphere, materials.skinLight, [0.19,0.78,-0.12], [0.25,0.09,0.11])}
-        {ellipsoid(sphere, materials.skin, [0,0.40,-0.225], [0.018,0.22,0.018])}
-        {[-0.13,0.02,0.17].map((y,i) => <group key={i}>
-          {ellipsoid(sphere, materials.skinLight, [-0.09,y,-0.205], [0.083,0.068,0.045])}
-          {ellipsoid(sphere, materials.skinLight, [0.09,y,-0.205], [0.083,0.068,0.045])}
-        </group>)}
-        {ellipsoid(sphere, materials.skin, [0,-0.18,-0.20], [0.035,0.025,0.018])}
+        <mesh geometry={anatomicalTorso} material={materials.skin} castShadow receiveShadow />
         {/* Irregular fresh blood smears and small coagulated droplets across the chest and abdomen */}
         {ellipsoid(sphere, materials.blood, [-0.28,0.68,-0.245], [0.105,0.035,0.018])}
         {ellipsoid(sphere, materials.blood, [-0.34,0.62,-0.246], [0.045,0.065,0.016])}
@@ -365,10 +434,8 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
         {ellipsoid(sphere, materials.sweat, [-0.14,0.29,-0.226], [0.011,0.027,0.009])}
         {ellipsoid(sphere, materials.sweat, [0.04,-0.02,-0.235], [0.014,0.03,0.01])}
         <group ref={leftArm} position={[-0.47,0.61,0]}>
-          {ellipsoid(sphere, materials.skinLight, [0,0,0], [0.245,0.25,0.235])}
-          {ellipsoid(sphere, materials.skin, [-0.025,-0.20,0.01], [0.19,0.245,0.18],)}
-          <mesh geometry={capsule} material={materials.skin} position={[-0.035,-0.29,0]} rotation={[0,0,0.08]} castShadow receiveShadow />
-          {ellipsoid(sphere, materials.skinLight, [-0.06,-0.52,0], [0.15,0.16,0.15])}
+          <mesh geometry={capsule} material={materials.skin} position={[-0.025,-0.22,0.01]} rotation={[0,0,0.04]} scale={[1.72,1.25,1.68]} castShadow receiveShadow />
+
           {ellipsoid(sphere, materials.blood, [-0.12,0.06,-0.17], [0.11,0.045,0.025])}
           {ellipsoid(sphere, materials.blood, [-0.08,-0.12,-0.166], [0.045,0.07,0.018])}
           {ellipsoid(sphere, materials.sweat, [-0.12,-0.31,-0.145], [0.014,0.04,0.012])}
@@ -379,10 +446,8 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
           </group>
         </group>
         <group ref={rightArm} position={[0.47,0.61,0]}>
-          {ellipsoid(sphere, materials.skinLight, [0,0,0], [0.245,0.25,0.235])}
-          {ellipsoid(sphere, materials.skin, [0.025,-0.20,0.01], [0.19,0.245,0.18])}
-          <mesh geometry={capsule} material={materials.skin} position={[0.035,-0.29,0]} rotation={[0,0,-0.08]} castShadow receiveShadow />
-          {ellipsoid(sphere, materials.skinLight, [0.06,-0.52,0], [0.16,0.17,0.16])}
+          <mesh geometry={capsule} material={materials.skin} position={[0.025,-0.22,0.01]} rotation={[0,0,-0.04]} scale={[1.72,1.25,1.68]} castShadow receiveShadow />
+
           {ellipsoid(sphere, materials.skin, [0.04,-0.57,0.09], [0.095,0.12,0.075])}
           {ellipsoid(sphere, materials.blood, [0.11,0.08,-0.17], [0.08,0.035,0.02])}
           {ellipsoid(sphere, materials.blood, [0.15,-0.01,-0.168], [0.035,0.06,0.016])}
