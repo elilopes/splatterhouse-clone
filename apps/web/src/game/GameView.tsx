@@ -568,6 +568,16 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
           group.position.set(e.x,0.035+(1-melt)*0.12,e.z);
           group.rotation.set(0,0,e.fall*1.42);
           group.scale.set(1+0.12*melt,Math.max(0.015,1-melt),1+0.12*melt);
+          group.traverse((child)=>{
+            if((child as THREE.Mesh).isMesh){
+              const mesh=child as THREE.Mesh;
+              const mats=Array.isArray(mesh.material)?mesh.material:[mesh.material];
+              mats.forEach((mat)=>{
+                const material=mat as THREE.MeshStandardMaterial;
+                if("opacity" in material){material.transparent=true;material.opacity=1-melt;}
+              });
+            }
+          });
         }
         if(e.grabTimer>=1.05){
           e.bodyState="gone";
