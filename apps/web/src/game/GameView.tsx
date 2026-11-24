@@ -197,17 +197,90 @@ function Exterior() {
 }
 
 function MansionRoom() {
+  const wood="#302019", darkWood="#17100e", stone="#51433a", brass="#80613b";
   return <group>
-    <mesh rotation={[-Math.PI/2,0,0]} receiveShadow><planeGeometry args={[18,7]}/><meshStandardMaterial color="#332923" roughness={0.88}/></mesh>
-    <mesh position={[0,3.5,-2.5]}><boxGeometry args={[18,7,0.5]}/><meshStandardMaterial color="#302522" roughness={0.94}/></mesh>
-    <mesh position={[0,6.8,-0.8]}><boxGeometry args={[18,0.35,3.5]}/><meshStandardMaterial color="#1b1110"/></mesh>
-    {[-7,-3,1,5,8].map(x=><group key={x} position={[x,3,-2.16]}>
-      <mesh><boxGeometry args={[1.8,4.8,0.12]}/><meshStandardMaterial color="#170f0d"/></mesh>
-      <mesh position={[0,1.25,0.15]}><sphereGeometry args={[0.18,16,12]}/><meshStandardMaterial color="#a13a22" emissive="#57170d"/></mesh>
+    {/* Broad stone-and-wood floor: the playable room extends well beyond the camera view. */}
+    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.08,1]} receiveShadow>
+      <planeGeometry args={[34,38]}/><meshStandardMaterial color="#302720" roughness={0.94}/>
+    </mesh>
+    {Array.from({length:13},(_,i)=><mesh key={"floor-seam-"+i} rotation={[-Math.PI/2,0,0]} position={[-15.5+i*2.58,0,-0.1]}>
+      <planeGeometry args={[0.035,37]}/><meshStandardMaterial color="#17120f" roughness={1}/>
+    </mesh>)}
+    {/* Four enclosing walls and a high, dark ceiling rim. */}
+    <mesh position={[0,7.2,-18]}><boxGeometry args={[34,14.4,0.65]}/><meshStandardMaterial color="#241b19" roughness={0.96}/></mesh>
+    <mesh position={[0,7.2,20]}><boxGeometry args={[34,14.4,0.65]}/><meshStandardMaterial color="#211917" roughness={0.96}/></mesh>
+    <mesh position={[-17,7.2,1]}><boxGeometry args={[0.65,14.4,38]}/><meshStandardMaterial color="#2b201d" roughness={0.96}/></mesh>
+    <mesh position={[17,7.2,1]}><boxGeometry args={[0.65,14.4,38]}/><meshStandardMaterial color="#2b201d" roughness={0.96}/></mesh>
+    <mesh position={[0,14.2,1]}><boxGeometry args={[34,0.5,38]}/><meshStandardMaterial color="#120e0e" roughness={1}/></mesh>
+    {/* Wall paneling, pilasters and dim gothic sconces. */}
+    {[-14,-10,-6,6,10,14].map(x=><group key={"back-panel-"+x} position={[x,4.8,-17.55]}>
+      <mesh><boxGeometry args={[2.65,8.4,0.18]}/><meshStandardMaterial color="#382823" roughness={0.86}/></mesh>
+      <mesh position={[0,0,0.12]}><boxGeometry args={[2.28,7.9,0.06]}/><meshStandardMaterial color="#241917" roughness={0.9}/></mesh>
+      <mesh position={[0,2.1,0.2]}><sphereGeometry args={[0.2,14,10]}/><meshStandardMaterial color="#a33c22" emissive="#7d210f" emissiveIntensity={0.65}/></mesh>
     </group>)}
-    <mesh position={[-4,1,-0.65]}><boxGeometry args={[2.4,0.22,0.85]}/><meshStandardMaterial color="#20120e"/></mesh>
-    {[-4.9,-3.1].map(x=><mesh key={x} position={[x,0.5,-0.65]}><boxGeometry args={[0.18,1,0.18]}/><meshStandardMaterial color="#20120e"/></mesh>)}
-    <mesh position={[6.8,0.22,-0.85]}><boxGeometry args={[3.3,0.45,1.1]}/><meshStandardMaterial color="#211512"/></mesh>
+    {[-13,-8,-3,3,8,13].map(x=><mesh key={"front-pilaster-"+x} position={[x,6.8,19.55]}><boxGeometry args={[0.42,13.5,0.35]}/><meshStandardMaterial color="#4a3429" roughness={0.88}/></mesh>)}
+    {[-14,14].map(x=><group key={"side-pilasters-"+x}>
+      {[-13,-5,3,11].map(z=><mesh key={z} position={[x,6.6,z]}><boxGeometry args={[0.35,13,0.42]}/><meshStandardMaterial color="#49352b" roughness={0.9}/></mesh>)}
+    </group>)}
+    {/* Large circular, worn carpet in the center of the hall. */}
+    <group position={[0,0.015,1]}>
+      <mesh rotation={[-Math.PI/2,0,0]}><circleGeometry args={[4.7,64]}/><meshStandardMaterial color="#4b2020" roughness={1}/></mesh>
+      <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.008,0]}><ringGeometry args={[4.1,4.48,64]}/><meshStandardMaterial color="#b18a54" roughness={0.82}/></mesh>
+      <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.012,0]}><ringGeometry args={[2.85,2.94,64]}/><meshStandardMaterial color="#9a7446" roughness={0.9}/></mesh>
+      <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.016,0]}><circleGeometry args={[1.05,48]}/><meshStandardMaterial color="#2c1114" roughness={1}/></mesh>
+    </group>
+    {/* Monumental central staircase, upper landing and two branching galleries. */}
+    {Array.from({length:13},(_,i)=><mesh key={"stair-"+i} position={[0,0.18+i*0.275,5.1-i*0.59]} castShadow receiveShadow>
+      <boxGeometry args={[5.8,0.38,0.78]}/><meshStandardMaterial color={i%2?stone:"#40332b"} roughness={0.92}/>
+    </mesh>)}
+    {Array.from({length:13},(_,i)=><mesh key={"stair-nosing-"+i} position={[0,0.38+i*0.275,4.72-i*0.59]} castShadow>
+      <boxGeometry args={[5.86,0.075,0.12]}/><meshStandardMaterial color={brass} metalness={0.28} roughness={0.62}/>
+    </mesh>)}
+    <mesh position={[0,3.65,-2.85]} castShadow receiveShadow><boxGeometry args={[7.1,0.55,2.5]}/><meshStandardMaterial color="#49382e" roughness={0.88}/></mesh>
+    {[-1,1].map(side=><group key={"upper-wing-"+side}>
+      <mesh position={[side*7.25,3.55,-3.05]} castShadow receiveShadow><boxGeometry args={[8.8,0.48,2.55]}/><meshStandardMaterial color="#3d3029" roughness={0.9}/></mesh>
+      <mesh position={[side*7.25,4.2,-4.22]}><boxGeometry args={[8.8,0.12,0.12]}/><meshStandardMaterial color={brass} metalness={0.32}/></mesh>
+      {[-1,1].map(edge=><mesh key={edge} position={[side*7.25+edge*4.28,3.98,-3.05]}><boxGeometry args={[0.14,0.9,2.55]}/><meshStandardMaterial color={wood}/></mesh>)}
+      {Array.from({length:8},(_,i)=><mesh key={"baluster-"+i} position={[side*(3.2+i*1.16),3.98,-4.22]}><boxGeometry args={[0.09,0.72,0.09]}/><meshStandardMaterial color={wood}/></mesh>)}
+      <mesh position={[side*7.25,4.36,-4.22]}><boxGeometry args={[8.8,0.14,0.2]}/><meshStandardMaterial color={wood}/></mesh>
+    </group>)}
+    {[-2.9,2.9].map(x=><group key={"stair-rail-"+x} position={[x,0,0]}>
+      <mesh position={[0,1.85,1.1]} rotation={[-0.48,0,0]}><boxGeometry args={[0.16,0.16,7.8]}/><meshStandardMaterial color={wood}/></mesh>
+      {Array.from({length:9},(_,i)=><mesh key={i} position={[0,0.35+i*0.36,4.1-i*0.62]}><boxGeometry args={[0.13,0.72,0.13]}/><meshStandardMaterial color={wood}/></mesh>)}
+    </group>)}
+    {/* Old, sagging sofa abandoned beside the carpet. */}
+    <group position={[-10.2,0,1.8]} rotation={[0,0.18,0]}>
+      <mesh position={[0,0.62,0]} castShadow><boxGeometry args={[3.8,0.55,1.35]}/><meshStandardMaterial color="#49302b" roughness={1}/></mesh>
+      <mesh position={[0,1.25,-0.52]} rotation={[-0.08,0,0]} castShadow><boxGeometry args={[3.7,1.25,0.32]}/><meshStandardMaterial color="#382421" roughness={1}/></mesh>
+      {[-1.82,1.82].map(x=><mesh key={x} position={[x,0.95,0]}><boxGeometry args={[0.38,0.95,1.45]}/><meshStandardMaterial color="#33201d" roughness={1}/></mesh>)}
+      {[-1.35,0,1.28].map(x=><mesh key={x} position={[x,0.94,0.05]} rotation={[0,0,(x===0?0.12:-0.08)]}><boxGeometry args={[1.12,0.28,1.05]}/><meshStandardMaterial color={x===0?"#5a3932":"#432b27"} roughness={1}/></mesh>)}
+      {[-1.45,1.45].map(x=><mesh key={x} position={[x,0.22,0.42]}><boxGeometry args={[0.16,0.42,0.16]}/><meshStandardMaterial color={darkWood}/></mesh>)}
+      <mesh position={[0,1.4,-0.33]} rotation={[0,0,-0.16]}><boxGeometry args={[0.85,0.16,0.025]}/><meshStandardMaterial color="#1d1514"/></mesh>
+    </group>
+    {/* Two overturned chairs; the second has a visibly missing fourth leg. */}
+    <group position={[8.4,0.18,4.8]} rotation={[0.18,0.15,1.02]}>
+      <mesh position={[0,0,0]}><boxGeometry args={[1.15,0.18,1.05]}/><meshStandardMaterial color="#503526" roughness={0.94}/></mesh>
+      <mesh position={[0,0.63,-0.43]}><boxGeometry args={[1.12,1.12,0.16]}/><meshStandardMaterial color="#3b261e" roughness={0.94}/></mesh>
+      {[-1,1].map(x=><mesh key={x} position={[x*0.46,-0.58,0.38]} rotation={[0,0,-0.12]}><boxGeometry args={[0.13,1.05,0.13]}/><meshStandardMaterial color="#39251b"/></mesh>)}
+      {[-1,1].map(x=><mesh key={"rear-"+x} position={[x*0.46,-0.58,-0.39]}><boxGeometry args={[0.13,1.05,0.13]}/><meshStandardMaterial color="#39251b"/></mesh>)}
+    </group>
+    <group position={[-7.8,0.16,-7.1]} rotation={[0.12,-0.28,-0.92]}>
+      <mesh position={[0,0,0]}><boxGeometry args={[1.12,0.18,1.02]}/><meshStandardMaterial color="#60402c" roughness={0.95}/></mesh>
+      <mesh position={[0,0.62,-0.42]}><boxGeometry args={[1.1,1.1,0.16]}/><meshStandardMaterial color="#493021" roughness={0.95}/></mesh>
+      {[-1,1].map(x=><mesh key={x} position={[x*0.44,-0.58,0.38]}><boxGeometry args={[0.13,1.0,0.13]}/><meshStandardMaterial color="#493021"/></mesh>)}
+      <mesh position={[-0.44,-0.58,-0.38]}><boxGeometry args={[0.13,1.0,0.13]}/><meshStandardMaterial color="#493021"/></mesh>
+      {/* Broken stump and splintered edge where the fourth leg should be. */}
+      <mesh position={[0.44,-0.28,-0.38]} rotation={[0,0,0.34]}><boxGeometry args={[0.14,0.42,0.14]}/><meshStandardMaterial color="#765037"/></mesh>
+    </group>
+    {/* Dusty side tables, toppled debris and dim wall lamps add scale to the hall. */}
+    {[-13.6,13.6].map(x=><group key={"side-lamp-"+x} position={[x,4.8,-8]}>
+      <mesh><boxGeometry args={[0.32,2.4,0.32]}/><meshStandardMaterial color="#211613"/></mesh>
+      <mesh position={[0,1.45,0]}><sphereGeometry args={[0.3,14,10]}/><meshStandardMaterial color="#b84a25" emissive="#7b220e" emissiveIntensity={0.9}/></mesh>
+    </group>)}
+    {[-12,12].map(x=><group key={"debris-"+x} position={[x,0.12,8.5]} rotation={[0.1,0.3,x*0.02]}>
+      <mesh><boxGeometry args={[1.2,0.22,0.65]}/><meshStandardMaterial color="#211a17"/></mesh>
+      <mesh position={[0,0.22,0.08]} rotation={[0.2,0,0.4]}><boxGeometry args={[0.75,0.18,0.25]}/><meshStandardMaterial color="#554034"/></mesh>
+    </group>)}
   </group>;
 }
 
@@ -559,7 +632,9 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     if(moving){
       const v=new THREE.Vector3(dx,0,dz).normalize();
       player.current.position.x+=v.x*4.25*dt;
-      player.current.position.z=THREE.MathUtils.clamp(player.current.position.z+v.z*2.1*dt,-1.35,1.35);
+      const depthSpeed=phase===2?4.25:2.1;
+      player.current.position.z+=v.z*depthSpeed*dt;
+      if(phase===1)player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-1.35,1.35);
       if(Math.abs(dx)>0.05)facing.current=dx>0?1:-1;
       player.current.rotation.y=facing.current>0?-Math.PI/2:Math.PI/2;
     }
@@ -777,18 +852,19 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
         group.rotation.z=THREE.MathUtils.damp(group.rotation.z,0,8,dt);
         if(Math.abs(e.vx)>0.08){
           e.x+=e.vx*dt;e.z+=e.vz*dt;e.vx*=Math.max(0,1-dt*2.8);
-        }else if(phase===1){
-          if(!e.activated&&Math.abs(px-e.x)<11.5)e.activated=true;
+        }else if(phase===1||phase===2){
+          if(!e.activated&&Math.hypot(px-e.x,pz-e.z)<(phase===2?18:11.5))e.activated=true;
           if(e.activated){
-            if(Math.abs(px-e.x)>0.85)e.x+=Math.sign(px-e.x)*1.2*dt;
-            e.z+=Math.sign(pz-e.z)*Math.min(Math.abs(pz-e.z),1.2*dt);
+            if(Math.abs(px-e.x)>0.85)e.x+=Math.sign(px-e.x)*(phase===2?1.35:1.2)*dt;
+            if(phase===2)e.z+=Math.sign(pz-e.z)*Math.min(Math.abs(pz-e.z),1.35*dt);
+            else e.z+=Math.sign(pz-e.z)*Math.min(Math.abs(pz-e.z),1.2*dt);
             group.rotation.y=THREE.MathUtils.damp(group.rotation.y,px>=e.x?0.45:-0.45,6,dt);
           }
         }
         group.position.y=e.kind==="crawler"?Math.abs(Math.sin(e.animation))*0.035:Math.sin(e.animation*2)*0.025;
       }
-      e.x=THREE.MathUtils.clamp(e.x,phase===1?-25.2:-8.1,phase===1?61.5:8.4);
-      e.z=THREE.MathUtils.clamp(e.z,-1.35,1.35);
+      e.x=THREE.MathUtils.clamp(e.x,phase===1?-25.2:-15.5,phase===1?61.5:15.5);
+      e.z=THREE.MathUtils.clamp(e.z,phase===1?-1.35:-16.2,phase===1?1.35:18.5);
       group.position.x=e.x;group.position.z=e.z;
     });
 
@@ -827,22 +903,46 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     if(phase===1){
       player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-25.5,63.8);
       if(player.current.position.x>=62.5){
-        setPhase(2);onStageChange(2);player.current.position.set(-7.3,0,0);
+        setPhase(2);onStageChange(2);player.current.position.set(0,0,9);
         enemies.current.forEach(e=>{e.alive=false;e.bodyState="alive";});
+        // The hall is an arena: its first wave enters from several sides, not a single corridor.
+        const hallWave=[
+          [-13.2,-12.8,"crawler"],[13.0,-12.2,"spitter"],[-14.0,5.0,"brute"],
+          [14.0,8.0,"crawler"],[-5.5,15.0,"spitter"],[7.0,15.2,"brute"]
+        ] as const;
+        hallWave.forEach((spawn,idx)=>enemies.current.push(makeEnemy(nextEnemyId.current++,spawn[0],spawn[1],spawn[2],idx*1.4,true)));
         severedHeads.current=[];
         bloodPools.current=[];
         setEnemyVersion(v=>v+1);
       }
     }else{
-      player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-8.1,8.4);
+      player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-15.1,15.1);
+      player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-15.6,13.4);
+      // Walkable height follows the central staircase and its upper left/right galleries.
+      const stairX=Math.abs(player.current.position.x);
+      const stairZ=player.current.position.z;
+      const onStair=stairX<=2.95&&stairZ>=-2.25&&stairZ<=5.2;
+      const onUpperGallery=stairZ>=-4.35&&stairZ<=-1.55&&stairX<=12.0;
+      if(onUpperGallery)player.current.position.y=3.5;
+      else if(onStair)player.current.position.y=THREE.MathUtils.clamp((5.2-stairZ)/7.45,0,1)*3.5;
+      else player.current.position.y=0;
     }
 
     const targetX=player.current.position.x;
-    camera.position.x=THREE.MathUtils.damp(camera.position.x,targetX,3.8,dt);
-    camera.position.z=phase===1?18:17;
-    camera.position.y=phase===1?4.6:4.2;
-    camera.lookAt(camera.position.x,phase===1?3.2:2.4,0);
-    if(size.width>0){const aspect=size.width/Math.max(1,size.height);const halfH=phase===1?5.4:4.6;const ortho=camera as THREE.OrthographicCamera;ortho.zoom=1;ortho.left=-halfH*aspect;ortho.right=halfH*aspect;ortho.top=halfH;ortho.bottom=-halfH;ortho.updateProjectionMatrix();}
+    const targetZ=player.current.position.z;
+    const playerHeight=player.current.position.y;
+    if(phase===1){
+      camera.position.x=THREE.MathUtils.damp(camera.position.x,targetX,3.8,dt);
+      camera.position.z=18;
+      camera.position.y=4.6;
+      camera.lookAt(camera.position.x,3.2,0);
+    }else{
+      camera.position.x=THREE.MathUtils.damp(camera.position.x,targetX,4.2,dt);
+      camera.position.y=THREE.MathUtils.damp(camera.position.y,8.4+playerHeight,3.2,dt);
+      camera.position.z=THREE.MathUtils.damp(camera.position.z,targetZ+6.8,4.2,dt);
+      camera.lookAt(targetX,1.7+playerHeight,targetZ-2.6);
+    }
+    if(size.width>0){const aspect=size.width/Math.max(1,size.height);const halfH=phase===1?5.4:7.4;const ortho=camera as THREE.OrthographicCamera;ortho.zoom=1;ortho.left=-halfH*aspect;ortho.right=halfH*aspect;ortho.top=halfH;ortho.bottom=-halfH;ortho.updateProjectionMatrix();}
   });
 
   return <group>
