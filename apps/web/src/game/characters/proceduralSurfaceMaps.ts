@@ -169,7 +169,7 @@ export function createProceduralSurfaceMaps(
         const wetRoughness = THREE.MathUtils.lerp(dryRoughness, 0.36, sweat);
         roughness = THREE.MathUtils.lerp(wetRoughness, 0.19 + fbm(u, v, seed + 199, 20, 2) * 0.08, bloodMask);
       } else {
-        const twill = Math.sin((u * size + v * size * 1.08) * (Math.PI / 3));
+        const twill = Math.sin((u * 12 + v * 13) * Math.PI * 2);
         const weave = fbm(u, v, seed + 41, 72, 2);
         const wear = fbm(u, v, seed + 71, 5, 4);
         const baseHeight = clamp01(0.47 + twill * 0.12 + (weave - 0.5) * 0.28 + (wear - 0.5) * 0.12);
