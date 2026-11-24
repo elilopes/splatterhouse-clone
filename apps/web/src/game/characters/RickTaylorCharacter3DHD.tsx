@@ -2,8 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Environment, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
-import { createProceduralSurfaceMaps } from "./proceduralSurfaceMaps";
+import {
+  createProceduralSurfaceMaps,
+  createWebGPUSurfaceNodeMaterial,
+} from "./proceduralSurfaceMaps";
 import { WebGPURenderer } from "three/webgpu";
+
 
 export type RickWeaponId = "pipe" | "machete" | "shotgun";
 
@@ -1094,14 +1098,50 @@ export function RickTaylorRig({
     };
   }, [skinSurfaceMaps, denimSurfaceMaps]);
 
+  // Materiais TSL / WebGPU para pele e jeans (normalMap + aoMap + roughnessMap)
+  const skinMat = useMemo(
+    () =>
+      createWebGPUSurfaceNodeMaterial({
+        baseColorHex: "#e3a88d",
+        maps: skinSurfaceMaps,
+        albedoMap: canvasMaps.skinMap,
+        normalScale: 0.9,
+        aoIntensity: 1.15,
+        roughnessMultiplier: 1.0,
+        metalness: 0.0,
+        useSecondaryUVForAO: true,
+      }),
+    [skinSurfaceMaps, canvasMaps.skinMap]
+  );
+
+  const jeansMat = useMemo(
+    () =>
+      createWebGPUSurfaceNodeMaterial({
+        baseColorHex: "#2f55a4",
+        maps: denimSurfaceMaps,
+        albedoMap: canvasMaps.jeansMap,
+        normalScale: 1.0,
+        aoIntensity: 1.2,
+        roughnessMultiplier: 1.0,
+        metalness: 0.0,
+        useSecondaryUVForAO: true,
+      }),
+    [denimSurfaceMaps, canvasMaps.jeansMap]
+  );
+
+  useEffect(() => {
+    return () => {
+      skinMat.dispose();
+      jeansMat.dispose();
+    };
+  }, [skinMat, jeansMat]);
+
   const {
     upperBodyGeo,
     trousersGeo,
     maskGeo,
     bootGeo,
     sphereGeo,
-    skinMat,
-    jeansMat,
     maskMat,
     darkVoidMat,
     leatherMat,
@@ -1114,30 +1154,6 @@ export function RickTaylorRig({
     const msk = createTerrorMaskGeometry();
     const bt = createCombatBootGeometry();
     const sph = new THREE.SphereGeometry(1, 20, 16);
-
-    const sMat = new THREE.MeshStandardMaterial({
-      map: canvasMaps.skinMap,
-      normalMap: skinSurfaceMaps.normalMap,
-      normalScale: new THREE.Vector2(0.9, 0.9),
-      aoMap: skinSurfaceMaps.aoMap,
-      aoMapIntensity: 1.15,
-      roughnessMap: skinSurfaceMaps.roughnessMap,
-      roughness: 1.0,
-      metalness: 0.0,
-      vertexColors: true,
-    });
-
-    const jMat = new THREE.MeshStandardMaterial({
-      map: canvasMaps.jeansMap,
-      normalMap: denimSurfaceMaps.normalMap,
-      normalScale: new THREE.Vector2(1.0, 1.0),
-      aoMap: denimSurfaceMaps.aoMap,
-      aoMapIntensity: 1.2,
-      roughnessMap: denimSurfaceMaps.roughnessMap,
-      roughness: 1.0,
-      metalness: 0.0,
-      vertexColors: true,
-    });
 
     const mMat = new THREE.MeshStandardMaterial({
       map: canvasMaps.maskMap,
@@ -1196,13 +1212,13 @@ export function RickTaylorRig({
 
     const skeleton = new THREE.Skeleton(bones);
 
-    const meshUpper = new THREE.SkinnedMesh(uBody, sMat);
+    const meshUpper = new THREE.SkinnedMesh(uBody, skinMat);
     meshUpper.add(bones[BONE_HIPS]);
     meshUpper.bind(skeleton);
     meshUpper.castShadow = true;
     meshUpper.receiveShadow = true;
 
-    const meshTrousers = new THREE.SkinnedMesh(trs, jMat);
+    const meshTrousers = new THREE.SkinnedMesh(trs, jeansMat);
     meshTrousers.bind(skeleton);
     meshTrousers.castShadow = true;
     meshTrousers.receiveShadow = true;
@@ -1213,8 +1229,6 @@ export function RickTaylorRig({
       maskGeo: msk,
       bootGeo: bt,
       sphereGeo: sph,
-      skinMat: sMat,
-      jeansMat: jMat,
       maskMat: mMat,
       darkVoidMat: dMat,
       leatherMat: lMat,
@@ -1222,7 +1236,7 @@ export function RickTaylorRig({
       skinnedUpperBody: meshUpper,
       skinnedTrousers: meshTrousers,
     };
-  }, [canvasMaps, skinSurfaceMaps, denimSurfaceMaps]);
+  }, [canvasMaps, skinMat, jeansMat]);
 
   useEffect(() => {
     return () => {
@@ -1231,8 +1245,6 @@ export function RickTaylorRig({
       maskGeo.dispose();
       bootGeo.dispose();
       sphereGeo.dispose();
-      skinMat.dispose();
-      jeansMat.dispose();
       maskMat.dispose();
       darkVoidMat.dispose();
       leatherMat.dispose();
@@ -1245,8 +1257,6 @@ export function RickTaylorRig({
     maskGeo,
     bootGeo,
     sphereGeo,
-    skinMat,
-    jeansMat,
     maskMat,
     darkVoidMat,
     leatherMat,
@@ -1268,26 +1278,55 @@ export function RickTaylorRig({
     const swingLeg = motion.moving ? Math.sin(p) * 0.55 : 0;
 
     const targetLeftFlex =
-      (motion.leftFlex ?? 0.15) + (isGrabbing ? 0.45 : motion.moving ? Math.max(0, -swingLeg) * 0.35 : 0.05);
+      (motion.leftFlex ?? 0.15) +
+      (isGrabbing ? 0.45 : motion.moving ? Math.max(0, -swingLeg) * 0.35 : 0.05);
     const targetRightFlex =
-      (motion.rightFlex ?? 0.18) + (isAttacking ? 0.75 : motion.moving ? Math.max(0, swingLeg) * 0.35 : 0.08);
-    const targetLegFlex = (motion.legFlex ?? 0.1) + (motion.moving ? Math.abs(swingLeg) * 0.45 : 0);
+      (motion.rightFlex ?? 0.18) +
+      (isAttacking ? 0.75 : motion.moving ? Math.max(0, swingLeg) * 0.35 : 0.08);
+    const targetLegFlex =
+      (motion.legFlex ?? 0.1) + (motion.moving ? Math.abs(swingLeg) * 0.45 : 0);
 
-    flexState.current.left = THREE.MathUtils.lerp(flexState.current.left, targetLeftFlex, dt * 12);
-    flexState.current.right = THREE.MathUtils.lerp(flexState.current.right, targetRightFlex, dt * 12);
-    flexState.current.leg = THREE.MathUtils.lerp(flexState.current.leg, targetLegFlex, dt * 12);
+    flexState.current.left = THREE.MathUtils.lerp(
+      flexState.current.left,
+      targetLeftFlex,
+      dt * 12
+    );
+    flexState.current.right = THREE.MathUtils.lerp(
+      flexState.current.right,
+      targetRightFlex,
+      dt * 12
+    );
+    flexState.current.leg = THREE.MathUtils.lerp(
+      flexState.current.leg,
+      targetLegFlex,
+      dt * 12
+    );
 
     const breathWeight = 0.5 + 0.5 * Math.sin(p * 1.15);
     if (skinnedUpperBody.morphTargetInfluences) {
       skinnedUpperBody.morphTargetInfluences[0] = breathWeight;
-      skinnedUpperBody.morphTargetInfluences[1] = THREE.MathUtils.clamp(flexState.current.left, 0, 1);
-      skinnedUpperBody.morphTargetInfluences[2] = THREE.MathUtils.clamp(flexState.current.right, 0, 1);
+      skinnedUpperBody.morphTargetInfluences[1] = THREE.MathUtils.clamp(
+        flexState.current.left,
+        0,
+        1
+      );
+      skinnedUpperBody.morphTargetInfluences[2] = THREE.MathUtils.clamp(
+        flexState.current.right,
+        0,
+        1
+      );
     }
     if (skinnedTrousers.morphTargetInfluences) {
-      skinnedTrousers.morphTargetInfluences[0] = THREE.MathUtils.clamp(flexState.current.leg, 0, 1);
+      skinnedTrousers.morphTargetInfluences[0] = THREE.MathUtils.clamp(
+        flexState.current.leg,
+        0,
+        1
+      );
     }
 
-    const attackSwing = isAttacking ? Math.sin(THREE.MathUtils.clamp(motion.attackProgress, 0, 1) * Math.PI) : 0;
+    const attackSwing = isAttacking
+      ? Math.sin(THREE.MathUtils.clamp(motion.attackProgress, 0, 1) * Math.PI)
+      : 0;
     const spineTwist = attackSwing * 0.38 - swingLeg * 0.08;
     const chestPitch = attackSwing * 0.22 + (isGrabbing ? 0.16 : 0.03);
 
@@ -1331,9 +1370,15 @@ export function RickTaylorRig({
       _matLElbow.setPosition(-0.18, -0.56, -0.01);
       b[BONE_L_ELBOW].matrix.copy(_matLElbow);
 
-      const rShPitch = isAttacking ? -1.65 * attackSwing - 0.2 : -swingLeg * 0.65 - 0.12;
-      const rElbPitch = isAttacking ? -0.25 - attackSwing * 0.35 : -0.42 - flexState.current.right * 0.3;
-      _matRShoulder.makeRotationFromEuler(new THREE.Euler(rShPitch, attackSwing * 0.3, 0.18));
+      const rShPitch = isAttacking
+        ? -1.65 * attackSwing - 0.2
+        : -swingLeg * 0.65 - 0.12;
+      const rElbPitch = isAttacking
+        ? -0.25 - attackSwing * 0.35
+        : -0.42 - flexState.current.right * 0.3;
+      _matRShoulder.makeRotationFromEuler(
+        new THREE.Euler(rShPitch, attackSwing * 0.3, 0.18)
+      );
       _matRShoulder.setPosition(0.36, 0.32, 0);
       b[BONE_R_SHOULDER].matrix.copy(_matRShoulder);
 
@@ -1384,14 +1429,26 @@ export function RickTaylorRig({
       }
       if (rightArmMount.current && rightForearm.current) {
         rightArmMount.current.position.set(0.55, 1.12 + motion.jumpHeight, -0.015);
-        rightArmMount.current.rotation.set(rShPitch + rElbPitch, attackSwing * 0.25, 0.14);
+        rightArmMount.current.rotation.set(
+          rShPitch + rElbPitch,
+          attackSwing * 0.25,
+          0.14
+        );
       }
       if (leftBootMount.current) {
-        leftBootMount.current.position.set(-0.175, 0.45 + motion.jumpHeight + Math.max(0, -swingLeg) * 0.08, swingLeg * 0.14);
+        leftBootMount.current.position.set(
+          -0.175,
+          0.45 + motion.jumpHeight + Math.max(0, -swingLeg) * 0.08,
+          swingLeg * 0.14
+        );
         leftBootMount.current.rotation.set(swingLeg * 0.4, 0, 0);
       }
       if (rightBootMount.current) {
-        rightBootMount.current.position.set(0.175, 0.45 + motion.jumpHeight + Math.max(0, swingLeg) * 0.08, -swingLeg * 0.14);
+        rightBootMount.current.position.set(
+          0.175,
+          0.45 + motion.jumpHeight + Math.max(0, swingLeg) * 0.08,
+          -swingLeg * 0.14
+        );
         rightBootMount.current.rotation.set(-swingLeg * 0.4, 0, 0);
       }
     }
