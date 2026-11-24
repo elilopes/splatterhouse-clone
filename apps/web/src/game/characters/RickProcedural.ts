@@ -22,6 +22,7 @@ export class RickProcedural {
   private readonly rightLeg: TransformNode;
   private walkTime = 0;
   private attackTime = 0;
+  private grabTime = 0;
 
   constructor(private readonly scene: Scene) {
     this.root = new TransformNode("rick-low-root", scene);
@@ -121,8 +122,13 @@ export class RickProcedural {
     this.attackTime = 0.24;
   }
 
+  playGrab(): void {
+    this.grabTime = 0.42;
+  }
+
   update(deltaSeconds: number, moving: boolean): void {
     this.attackTime = Math.max(0, this.attackTime - deltaSeconds);
+    this.grabTime = Math.max(0, this.grabTime - deltaSeconds);
     if (moving) {
       this.walkTime += deltaSeconds * 8.5;
       const swing = Math.sin(this.walkTime) * 0.48;
@@ -136,6 +142,14 @@ export class RickProcedural {
       this.rightLeg.rotation.x += (0 - this.rightLeg.rotation.x) * blend;
       this.leftArm.rotation.x += (0 - this.leftArm.rotation.x) * blend;
       this.rightArm.rotation.x += (0 - this.rightArm.rotation.x) * blend;
+    }
+    if (this.grabTime > 0) {
+      const grabProgress = 1 - this.grabTime / 0.42;
+      const reach = Math.sin(grabProgress * Math.PI);
+      this.leftArm.rotation.x = -0.9 - reach * 0.85;
+      this.rightArm.rotation.x = -0.9 - reach * 0.85;
+      this.leftArm.rotation.z = -0.18;
+      this.rightArm.rotation.z = 0.18;
     }
     if (this.attackTime > 0) {
       const attackProgress = this.attackTime / 0.24;
