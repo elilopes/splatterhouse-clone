@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   Camera, Color3, Engine, HemisphericLight, Mesh, MeshBuilder,
   Scene, StandardMaterial, Vector3, FreeCamera, DirectionalLight, TransformNode
@@ -218,6 +219,30 @@ function addImpact(scene: Scene, position: Vector3, material: StandardMaterial) 
 
 export default function GameView({ onScore, onKill, paused, onStageChange }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const joystickRef = useRef<HTMLDivElement>(null);
+  const joystickInput = useRef({ x: 0, y: 0, pointerId: -1 });
+  const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
+  const updateJoystick = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const base = joystickRef.current;
+    if (!base) return;
+    const rect = base.getBoundingClientRect();
+    const dx = event.clientX - (rect.left + rect.width / 2);
+    const dy = event.clientY - (rect.top + rect.height / 2);
+    const radius = rect.width * 0.34;
+    const distance = Math.hypot(dx, dy);
+    const scale = distance > radius ? radius / distance : 1;
+    const knobX = dx * scale;
+    const knobY = dy * scale;
+    joystickInput.current.x = knobX / radius;
+    joystickInput.current.y = knobY / radius;
+    setJoystickKnob({ x: knobX, y: knobY });
+  };
+  const releaseJoystick = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (joystickInput.current.pointerId !== event.pointerId) return;
+    joystickInput.current = { x: 0, y: 0, pointerId: -1 };
+    setJoystickKnob({ x: 0, y: 0 });
+    if (joystickRef.current?.hasPointerCapture(event.pointerId)) joystickRef.current.releasePointerCapture(event.pointerId);
+  };
   const callbacks = useRef({ onScore, onKill, onStageChange });
   callbacks.current = { onScore, onKill, onStageChange };
   const pausedRef = useRef(paused);
@@ -371,8 +396,10 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
       const now=performance.now();const dt=Math.min((now-last)/1000,0.045);last=now;
       if(!pausedRef.current){
         attackCooldown=Math.max(0,attackCooldown-dt);grabCooldown=Math.max(0,grabCooldown-dt);
-        const horizontal=Number(keys.has("d")||keys.has("arrowright"))-Number(keys.has("a")||keys.has("arrowleft"));
-        const depth=Number(keys.has("s")||keys.has("arrowdown"))-Number(keys.has("w")||keys.has("arrowup"));
+        const keyboardHorizontal=Number(keys.has("d")||keys.has("arrowright"))-Number(keys.has("a")||keys.has("arrowleft"));
+        const keyboardDepth=Number(keys.has("s")||keys.has("arrowdown"))-Number(keys.has("w")||keys.has("arrowup"));
+        const horizontal=Math.max(-1,Math.min(1,keyboardHorizontal+joystickInput.current.x));
+        const depth=Math.max(-1,Math.min(1,keyboardDepth+joystickInput.current.y));
         const move=new Vector3(horizontal,0,depth);
         if(move.lengthSquared()>0){
           move.normalize();player.position.x+=move.x*4.25*dt;
@@ -453,5 +480,34 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
     };
   },[]);
 
-  return <canvas ref={canvasRef} className="game-canvas" aria-label="Splatterhouse: combate com armas na fase externa e interior 2,5D" />;
+  return (
+    <div className="game-viewport">
+      <canvas ref={canvasRef} className="game-canvas" aria-label="Splatterhouse: combate com armas na fase externa e interior 2,5D" />
+      <div
+        ref={joystickRef}
+        className="virtual-joystick"
+        role="application"
+        aria-label="Joystick virtual para movimentar Rick"
+        onPointerDown={event => {
+          event.preventDefault();
+          joystickInput.current.pointerId = event.pointerId;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          updateJoystick(event);
+        }}
+        onPointerMove={event => {
+          if (joystickInput.current.pointerId === event.pointerId) updateJoystick(event);
+        }}
+        onPointerUp={releaseJoystick}
+        onPointerCancel={releaseJoystick}
+        onLostPointerCapture={() => {
+          joystickInput.current = { x: 0, y: 0, pointerId: -1 };
+          setJoystickKnob({ x: 0, y: 0 });
+        }}
+      >
+        <span className="virtual-joystick-ring" />
+        <span className="virtual-joystick-knob" style={{ transform: "translate(calc(-50% + " + joystickKnob.x + "px), calc(-50% + " + joystickKnob.y + "px))" }} />
+        <span className="virtual-joystick-label">MOVE</span>
+      </div>
+    </div>
+  );
 }
