@@ -15,6 +15,8 @@ export type RickMotion = {
   grabTime: number;
   jumpHeight: number;
   weapon: RickWeaponId | null;
+  shotgunAimPitch?: number;
+  shotgunAimYaw?: number;
 };
 
 type Props = { motion: RickMotion; equippedWeapon?: RickWeaponId | null };
@@ -735,10 +737,14 @@ function HeldWeaponMesh({ id, muzzleRef }: { id: RickWeaponId; muzzleRef: React.
     );
   }
   return (
-    <group position={[0, -0.28, -0.02]} rotation={[-Math.PI / 2 - 0.16, 0, 0]}>
+    <group position={[0, -0.24, -0.04]} rotation={[-Math.PI / 2, 0, 0]}>
       <mesh position={[0, 0, -0.18]} rotation={[Math.PI / 2, 0, 0]} castShadow>
         <cylinderGeometry args={[0.045, 0.045, 1.05, 12]} />
         <meshStandardMaterial color="#777c7a" metalness={0.82} roughness={0.25} />
+      </mesh>
+      <mesh position={[0, -0.045, -0.22]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.042, 0.042, 0.32, 10]} />
+        <meshStandardMaterial color="#3c2319" roughness={0.82} />
       </mesh>
       <mesh position={[0, -0.05, 0.42]}>
         <boxGeometry args={[0.12, 0.16, 0.45]} />
@@ -1228,7 +1234,7 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     const oppositeSwing = motion.moving ? Math.max(0, Math.cos(phase + Math.PI)) : 0;
     const gait = motion.moving ? stride : 0;
     const activeWeapon = equippedWeapon ?? motion.weapon;
-    const attackDur = activeWeapon === "shotgun" ? 0.34 : activeWeapon === "pipe" ? 0.68 : activeWeapon === "machete" ? 0.56 : 0.36;
+    const attackDur = activeWeapon === "shotgun" ? 0.42 : activeWeapon === "pipe" ? 0.68 : activeWeapon === "machete" ? 0.56 : 0.36;
     const p = motion.attackTime > 0
       ? activeWeapon === "pipe"
         ? THREE.MathUtils.clamp(motion.attackProgress, 0, 1)
@@ -1249,24 +1255,42 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     let lElbowX = 0.72;
 
     if (activeWeapon === "shotgun") {
-      // Both arms support the stock and fore-end at chest/shoulder height.
-      // The slightly elevated barrel line aims at enemy heads instead of the floor.
-      rShoulderX = -0.48 + gait * 0.06;
-      rElbowX = 1.34;
+      // Ready pose: keep shotgun barrel horizontal and pointing straight forward (-Z).
+      torsoRotX = 0;
+      torsoRotY = 0.10 + (motion.moving ? gait * 0.02 : 0);
+      rShoulderX = -0.18 + gait * 0.04;
+      rElbowX = Math.PI / 2 - rShoulderX;
       rShoulderZ = -0.02;
-      lShoulderX = 0.62 - gait * 0.06;
-      lElbowX = 1.08;
-      lShoulderZ = 0.18;
-      torsoRotY = 0.12;
+      lShoulderX = 0.56 - gait * 0.04;
+      lElbowX = 1.18 + gait * 0.04;
+      lShoulderZ = 0.22;
+
       if (motion.attackTime > 0) {
-        const recoil = p < 0.24
-          ? smoothstep(0, 0.24, p)
-          : 1 - smoothstep(0.24, 0.9, p);
-        rShoulderX -= recoil * 0.18;
-        rElbowX += recoil * 0.12;
-        lShoulderX -= recoil * 0.1;
-        torsoRotX += recoil * 0.12;
-        torsoRotY -= recoil * 0.08;
+        const aimPitch = motion.shotgunAimPitch ?? 0.20;
+        const aimYaw = motion.shotgunAimYaw ?? 0;
+        if (p < 0.24) {
+          // Snap aim directly toward the target monster's head.
+          const aimEase = smoothstep(0, 0.20, p);
+          torsoRotY = THREE.MathUtils.lerp(0.10, aimYaw, aimEase);
+          torsoRotX = 0;
+          rShoulderX = THREE.MathUtils.lerp(-0.18, 0.26 + aimPitch * 0.45, aimEase);
+          const targetPitch = THREE.MathUtils.lerp(0, aimPitch, aimEase);
+          rElbowX = Math.PI / 2 + targetPitch - rShoulderX;
+          lShoulderX = THREE.MathUtils.lerp(0.56, 0.88 + aimPitch * 0.55, aimEase);
+          lElbowX = THREE.MathUtils.lerp(1.18, 1.02 - aimPitch * 0.25, aimEase);
+        } else {
+          // Muzzle blast and recoil kick from the head-aimed line back to ready stance.
+          const kick = p < 0.42 ? smoothstep(0.24, 0.32, p) : 1 - smoothstep(0.42, 0.94, p);
+          const settle = 1 - smoothstep(0.52, 1.0, p);
+          torsoRotX = kick * 0.08;
+          torsoRotY = THREE.MathUtils.lerp(0.10, aimYaw, settle) - kick * 0.06;
+          const aimedShoulder = 0.26 + aimPitch * 0.45;
+          rShoulderX = THREE.MathUtils.lerp(-0.18, aimedShoulder, settle) + kick * 0.14;
+          const currentPitch = aimPitch * settle + kick * 0.12;
+          rElbowX = Math.PI / 2 + currentPitch - rShoulderX - torsoRotX;
+          lShoulderX = THREE.MathUtils.lerp(0.56, 0.88 + aimPitch * 0.55, settle) + kick * 0.14;
+          lElbowX = THREE.MathUtils.lerp(1.18, 1.02 - aimPitch * 0.25, settle) - kick * 0.10;
+        }
       }
     } else if (activeWeapon === "pipe") {
       // Pipe is held ready; each randomized strike drives the skinned torso and both arms.
@@ -1504,28 +1528,32 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     const bounceY = motion.moving ? Math.abs(Math.sin(phase * 2)) * 0.045 : Math.sin(t * 1.7) * 0.009;
     hipsBone.position.y = 1.05 + bounceY;
 
-    spineBone.rotation.y = THREE.MathUtils.damp(spineBone.rotation.y, torsoRotY * 0.42, 18, dt);
-    spineBone.rotation.x = THREE.MathUtils.damp(spineBone.rotation.x, torsoRotX * 0.45, 18, dt);
+    const shotgunFiring = activeWeapon === "shotgun" && motion.attackTime > 0;
+    const torsoDamp = shotgunFiring ? 38 : 18;
+    const armDamp = shotgunFiring ? 48 : 24;
+
+    spineBone.rotation.y = THREE.MathUtils.damp(spineBone.rotation.y, torsoRotY * 0.42, torsoDamp, dt);
+    spineBone.rotation.x = THREE.MathUtils.damp(spineBone.rotation.x, torsoRotX * 0.45, torsoDamp, dt);
     spineBone.rotation.z = THREE.MathUtils.damp(spineBone.rotation.z, torsoRotZ * 0.42, 10, dt);
 
-    chestBone.rotation.y = THREE.MathUtils.damp(chestBone.rotation.y, torsoRotY * 0.58, 18, dt);
-    chestBone.rotation.x = THREE.MathUtils.damp(chestBone.rotation.x, torsoRotX * 0.55, 18, dt);
+    chestBone.rotation.y = THREE.MathUtils.damp(chestBone.rotation.y, torsoRotY * 0.58, torsoDamp, dt);
+    chestBone.rotation.x = THREE.MathUtils.damp(chestBone.rotation.x, torsoRotX * 0.55, torsoDamp, dt);
     chestBone.rotation.z = THREE.MathUtils.damp(chestBone.rotation.z, torsoRotZ * 0.58, 10, dt);
 
     neckBone.rotation.y = THREE.MathUtils.damp(neckBone.rotation.y, -torsoRotY * 0.25, 14, dt);
     headBone.rotation.y = THREE.MathUtils.damp(headBone.rotation.y, -torsoRotY * 0.40, 14, dt);
     headBone.rotation.x = THREE.MathUtils.damp(headBone.rotation.x, grab * 0.08 - torsoRotX * 0.35, 10, dt);
 
-    leftShoulderBone.rotation.x = THREE.MathUtils.damp(leftShoulderBone.rotation.x, lShoulderX, 22, dt);
+    leftShoulderBone.rotation.x = THREE.MathUtils.damp(leftShoulderBone.rotation.x, lShoulderX, shotgunFiring ? 44 : 22, dt);
     leftShoulderBone.rotation.z = THREE.MathUtils.damp(leftShoulderBone.rotation.z, lShoulderZ, 18, dt);
-    rightShoulderBone.rotation.x = THREE.MathUtils.damp(rightShoulderBone.rotation.x, rShoulderX, 24, dt);
+    rightShoulderBone.rotation.x = THREE.MathUtils.damp(rightShoulderBone.rotation.x, rShoulderX, armDamp, dt);
     rightShoulderBone.rotation.z = THREE.MathUtils.damp(rightShoulderBone.rotation.z, rShoulderZ, 20, dt);
 
     const nextLElbow = leftForearm.current
-      ? THREE.MathUtils.damp(leftForearm.current.rotation.x, lElbowX, 22, dt)
+      ? THREE.MathUtils.damp(leftForearm.current.rotation.x, lElbowX, shotgunFiring ? 44 : 22, dt)
       : lElbowX;
     const nextRElbow = rightForearm.current
-      ? THREE.MathUtils.damp(rightForearm.current.rotation.x, rElbowX, 24, dt)
+      ? THREE.MathUtils.damp(rightForearm.current.rotation.x, rElbowX, armDamp, dt)
       : rElbowX;
 
     if (leftForearm.current) leftForearm.current.rotation.x = nextLElbow;
@@ -1613,7 +1641,7 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     }
 
     if (muzzleRef.current) {
-      muzzleRef.current.visible = activeWeapon === "shotgun" && motion.attackTime > 0.22;
+      muzzleRef.current.visible = activeWeapon === "shotgun" && motion.attackTime > 0 && p >= 0.18 && p <= 0.40;
     }
     root.current.position.y = motion.jumpHeight;
   });

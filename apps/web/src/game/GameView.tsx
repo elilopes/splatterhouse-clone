@@ -65,26 +65,436 @@ type PipeAttackStyle = "bat" | "overhead";
 type PipeCombo = { steps:PipeAttackStyle[]; elapsed:number; stepIndex:number; hit:boolean };
 const PIPE_STRIKE_DURATION = 0.72;
 
+function createOrganicSplatterGeometry(seed: number, radius: number, lobes: number, thickness: number) {
+  const shape = new THREE.Shape();
+  const steps = lobes * 6;
+  for (let i = 0; i <= steps; i++) {
+    const a = (i / steps) * Math.PI * 2;
+    const n1 = Math.sin(a * lobes + seed * 1.7) * 0.28;
+    const n2 = Math.cos(a * (lobes + 2) - seed * 2.3) * 0.18;
+    const drip = Math.sin(a) < -0.35 ? Math.pow(-Math.sin(a), 2) * (0.28 + (seed % 3) * 0.12) : 0;
+    const r = radius * (0.68 + n1 + n2 + drip);
+    const x = Math.cos(a) * r;
+    const y = Math.sin(a) * r * (1.15 + Math.sin(seed) * 0.15);
+    if (i === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  }
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: thickness,
+    bevelEnabled: true,
+    bevelThickness: thickness * 0.55,
+    bevelSize: radius * 0.04,
+    bevelSegments: 2,
+    curveSegments: 2,
+  });
+  geo.computeVertexNormals();
+  return geo;
+}
+
 function FleshyWall() {
-  const lobes = useMemo(()=>Array.from({length:114},(_,i)=>({
-    x:-26.2+(i%38)*0.67,
-    y:0.45+Math.floor(i/38)*1.55+(Math.sin(i*1.7)*0.16),
-    sx:0.38+(i%4)*0.07,
-    sy:0.52+(i%3)*0.09,
-    sz:0.18+(i%3)*0.035
-  })),[]);
-  return <group>
-    <mesh position={[-14.0,2.6,-2.25]} castShadow receiveShadow><boxGeometry args={[25.6,5.2,0.65]}/><meshStandardMaterial color="#18210d" roughness={0.92}/></mesh>
-    {lobes.map((p,i)=><mesh key={i} position={[p.x,p.y,-1.84]} scale={[p.sx,p.sy,p.sz]} castShadow receiveShadow>
-      <sphereGeometry args={[1,20,16]}/><meshStandardMaterial color={i%5===0?"#647333":i%3===0?"#3e4d20":"#283819"} roughness={0.28} metalness={0.02}/>
-    </mesh>)}
-    {Array.from({length:24},(_,i)=><group key={i} position={[-25.9+i*1.04,0,-1.45]}>
-      <mesh position={[0,2.2,0]} rotation={[0,0,Math.sin(i*2)*0.12]}><cylinderGeometry args={[0.038,0.06,4.1,10]}/><meshStandardMaterial color="#17240f" roughness={0.65}/></mesh>
-      <mesh position={[0.18,0.3,-0.08]} scale={[0.16,0.6,0.15]}><capsuleGeometry args={[0.12,0.65,6,12]}/><meshStandardMaterial color="#71803b" roughness={0.24}/></mesh>
-    </group>)}
-    {Array.from({length:30},(_,i)=><mesh key={i} position={[-26.2+i*0.84,4.2-(i%4)*0.14,-1.52]} rotation={[0,0,Math.PI]}><capsuleGeometry args={[0.085,0.42+(i%4)*0.1,5,10]}/><meshStandardMaterial color="#637638" roughness={0.22}/></mesh>)}
-    {Array.from({length:20},(_,i)=><mesh key={i} position={[-26.0+i*1.25,0.12,-1.42]} scale={[0.78,0.12,0.44]}><sphereGeometry args={[0.5,16,10]}/><meshStandardMaterial color="#65783a" roughness={0.2}/></mesh>)}
-  </group>;
+  const wallAssets = useMemo(() => {
+    const segX = 136;
+    const segY = 26;
+    const width = 25.8;
+    const height = 5.2;
+    const xStart = -26.8;
+
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
+
+    const wallSurfaceZ = (x: number, y: number) => {
+      const macroSwell =
+        Math.sin(x * 0.65 + Math.sin(y * 0.9) * 1.4) * 0.16 +
+        Math.cos(y * 1.35 + x * 0.42) * 0.12;
+      const pustule =
+        Math.pow(Math.max(0, Math.sin(x * 1.8 + y * 1.3)), 3) * 0.18 +
+        Math.pow(Math.max(0, Math.cos(x * 2.7 - y * 2.1)), 4) * 0.12;
+      const sinewFold = Math.sin(x * 3.8 + Math.cos(y * 1.6) * 2.0) * 0.045;
+      return -1.94 + macroSwell + pustule + sinewFold;
+    };
+
+    for (let iy = 0; iy <= segY; iy++) {
+      const v = iy / segY;
+      const y = v * height;
+      for (let ix = 0; ix <= segX; ix++) {
+        const u = ix / segX;
+        const x = xStart + u * width;
+        const z = wallSurfaceZ(x, y);
+
+        positions.push(x, y, z);
+        uvs.push(u * 6.5, v * 2.4);
+
+        // Mottled sickly olive, necrotic bile, bruised purple-red & dark crevices
+        const rot = 0.5 + 0.5 * Math.sin(x * 0.9 + y * 1.2);
+        const bruise = Math.pow(Math.max(0, Math.cos(x * 0.72 - y * 0.85)), 2);
+        const crevice = THREE.MathUtils.clamp(((-1.94 + 0.25) - z) * 1.9, 0, 0.55);
+        let r = THREE.MathUtils.lerp(0.22, 0.42, rot) + bruise * 0.16 - crevice * 0.14;
+        let g = THREE.MathUtils.lerp(0.30, 0.46, rot) - bruise * 0.14 - crevice * 0.18;
+        let b = THREE.MathUtils.lerp(0.11, 0.16, rot) + bruise * 0.08 - crevice * 0.08;
+
+        // Irregular dark blood soak & toxic slime staining directly on the wall mesh
+        const bloodPatch =
+          Math.exp(-Math.pow((x + 22.8) / 1.3, 2) - Math.pow((y - 2.3) / 1.1, 2)) +
+          Math.exp(-Math.pow((x + 15.2) / 1.6, 2) - Math.pow((y - 1.9) / 1.4, 2)) +
+          Math.exp(-Math.pow((x + 7.4) / 1.4, 2) - Math.pow((y - 2.5) / 1.2, 2));
+        if (bloodPatch > 0.18) {
+          const k = Math.min(0.85, bloodPatch * 0.75);
+          r = THREE.MathUtils.lerp(r, 0.36, k);
+          g = THREE.MathUtils.lerp(g, 0.05, k);
+          b = THREE.MathUtils.lerp(b, 0.07, k);
+        }
+        colors.push(THREE.MathUtils.clamp(r, 0.06, 0.85), THREE.MathUtils.clamp(g, 0.04, 0.85), THREE.MathUtils.clamp(b, 0.04, 0.6));
+      }
+    }
+
+    for (let iy = 0; iy < segY; iy++) {
+      for (let ix = 0; ix < segX; ix++) {
+        const a = iy * (segX + 1) + ix;
+        const b = a + 1;
+        const c = a + segX + 1;
+        const d = c + 1;
+        indices.push(a, b, c, b, d, c);
+      }
+    }
+
+    const wallGeo = new THREE.BufferGeometry();
+    wallGeo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    wallGeo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+    wallGeo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    wallGeo.setIndex(indices);
+    wallGeo.computeVertexNormals();
+    wallGeo.computeBoundingSphere();
+
+    // Procedural wet organic normal & roughness map
+    const texSize = 256;
+    const hCanvas = document.createElement("canvas");
+    hCanvas.width = hCanvas.height = texSize;
+    const hCtx = hCanvas.getContext("2d")!;
+    const hImg = hCtx.createImageData(texSize, texSize);
+    const rCanvas = document.createElement("canvas");
+    rCanvas.width = rCanvas.height = texSize;
+    const rCtx = rCanvas.getContext("2d")!;
+    const rImg = rCtx.createImageData(texSize, texSize);
+
+    for (let y = 0; y < texSize; y++) {
+      for (let x = 0; x < texSize; x++) {
+        const i = (y * texSize + x) * 4;
+        const fx = (x / texSize) * Math.PI * 2;
+        const fy = (y / texSize) * Math.PI * 2;
+        const vein = Math.sin(fx * 3 + Math.sin(fy * 2) * 2.2) * 0.4 + Math.cos(fy * 5 - fx * 2) * 0.3;
+        const pit = Math.sin(fx * 11) * Math.cos(fy * 9) * 0.22;
+        const hv = THREE.MathUtils.clamp(128 + (vein + pit) * 72, 32, 230);
+        hImg.data[i] = hImg.data[i + 1] = hImg.data[i + 2] = hv;
+        hImg.data[i + 3] = 255;
+
+        const rv = THREE.MathUtils.clamp(64 + (vein * 35 - pit * 28), 22, 145);
+        rImg.data[i] = rImg.data[i + 1] = rImg.data[i + 2] = rv;
+        rImg.data[i + 3] = 255;
+      }
+    }
+    hCtx.putImageData(hImg, 0, 0);
+    rCtx.putImageData(rImg, 0, 0);
+
+    const nCanvas = document.createElement("canvas");
+    nCanvas.width = nCanvas.height = texSize;
+    const nCtx = nCanvas.getContext("2d")!;
+    const nImg = nCtx.createImageData(texSize, texSize);
+    for (let y = 0; y < texSize; y++) {
+      for (let x = 0; x < texSize; x++) {
+        const i = (y * texSize + x) * 4;
+        const l = hImg.data[(y * texSize + ((x + texSize - 1) % texSize)) * 4];
+        const r = hImg.data[(y * texSize + ((x + 1) % texSize)) * 4];
+        const u = hImg.data[(((y + texSize - 1) % texSize) * texSize + x) * 4];
+        const d = hImg.data[(((y + 1) % texSize) * texSize + x) * 4];
+        const nx = ((l - r) / 255) * 3.4;
+        const ny = ((u - d) / 255) * 3.4;
+        const len = Math.hypot(nx, ny, 1);
+        nImg.data[i] = (nx / len * 0.5 + 0.5) * 255;
+        nImg.data[i + 1] = (ny / len * 0.5 + 0.5) * 255;
+        nImg.data[i + 2] = (1 / len * 0.5 + 0.5) * 255;
+        nImg.data[i + 3] = 255;
+      }
+    }
+    nCtx.putImageData(nImg, 0, 0);
+
+    const normalMap = new THREE.CanvasTexture(nCanvas);
+    normalMap.wrapS = normalMap.wrapT = THREE.RepeatWrapping;
+    const roughnessMap = new THREE.CanvasTexture(rCanvas);
+    roughnessMap.wrapS = roughnessMap.wrapT = THREE.RepeatWrapping;
+    const bumpMap = new THREE.CanvasTexture(hCanvas);
+    bumpMap.wrapS = bumpMap.wrapT = THREE.RepeatWrapping;
+
+    const wallMat = new THREE.MeshPhysicalMaterial({
+      color: "#ffffff",
+      vertexColors: true,
+      normalMap,
+      normalScale: new THREE.Vector2(1.15, 1.15),
+      roughnessMap,
+      bumpMap,
+      bumpScale: 0.045,
+      roughness: 0.34,
+      clearcoat: 0.92,
+      clearcoatRoughness: 0.09,
+    });
+
+    const bloodSplatterMat = new THREE.MeshPhysicalMaterial({
+      color: "#57070f",
+      roughness: 0.14,
+      metalness: 0.02,
+      clearcoat: 1,
+      clearcoatRoughness: 0.04,
+    });
+
+    const greenSlimeMat = new THREE.MeshPhysicalMaterial({
+      color: "#77992d",
+      roughness: 0.08,
+      metalness: 0.01,
+      clearcoat: 1,
+      clearcoatRoughness: 0.025,
+      transmission: 0.14,
+      thickness: 0.6,
+      ior: 1.35,
+      transparent: true,
+      opacity: 0.92,
+    });
+
+    const milkyClumpMat = new THREE.MeshPhysicalMaterial({
+      color: "#e6e0cc",
+      roughness: 0.16,
+      metalness: 0.01,
+      clearcoat: 0.96,
+      clearcoatRoughness: 0.05,
+      sheen: 0.35,
+      sheenColor: new THREE.Color("#f5f2e6"),
+    });
+
+    // Irregular blood splatters, irregular green slime stains & milky stuck globs anchored on wall relief
+    const bloodSplatters = [
+      { x: -24.6, y: 2.35, rot: 0.3, geo: createOrganicSplatterGeometry(1.1, 0.78, 7, 0.045) },
+      { x: -20.8, y: 1.75, rot: -0.5, geo: createOrganicSplatterGeometry(2.4, 0.92, 8, 0.05) },
+      { x: -16.2, y: 2.95, rot: 0.7, geo: createOrganicSplatterGeometry(3.7, 0.85, 6, 0.045) },
+      { x: -13.1, y: 1.35, rot: -0.2, geo: createOrganicSplatterGeometry(4.9, 0.96, 9, 0.055) },
+      { x: -9.4, y: 2.65, rot: 0.9, geo: createOrganicSplatterGeometry(6.2, 0.74, 7, 0.045) },
+      { x: -5.2, y: 1.85, rot: -0.8, geo: createOrganicSplatterGeometry(7.5, 0.88, 8, 0.05) },
+      { x: -2.4, y: 3.1, rot: 0.4, geo: createOrganicSplatterGeometry(8.3, 0.68, 6, 0.045) },
+    ].map((s) => ({ ...s, z: wallSurfaceZ(s.x, s.y) + 0.04 }));
+
+    const slimeSplatters = [
+      { x: -25.4, y: 3.25, rot: -0.4, geo: createOrganicSplatterGeometry(9.1, 0.92, 8, 0.055) },
+      { x: -21.9, y: 1.15, rot: 0.6, geo: createOrganicSplatterGeometry(10.3, 1.05, 7, 0.06) },
+      { x: -18.5, y: 3.55, rot: -0.7, geo: createOrganicSplatterGeometry(11.6, 0.88, 9, 0.055) },
+      { x: -14.7, y: 2.25, rot: 0.25, geo: createOrganicSplatterGeometry(12.8, 1.12, 8, 0.065) },
+      { x: -10.8, y: 0.95, rot: 0.85, geo: createOrganicSplatterGeometry(13.9, 0.95, 7, 0.055) },
+      { x: -6.8, y: 3.15, rot: -0.35, geo: createOrganicSplatterGeometry(15.2, 1.02, 8, 0.06) },
+      { x: -3.6, y: 1.45, rot: 0.5, geo: createOrganicSplatterGeometry(16.4, 0.84, 6, 0.05) },
+    ].map((s) => ({ ...s, z: wallSurfaceZ(s.x, s.y) + 0.055 }));
+
+    const milkyClumps = [
+      { x: -24.1, y: 1.9, rot: 0.2, sx: 0.32, sy: 0.44, geo: createOrganicSplatterGeometry(21.1, 0.34, 5, 0.09) },
+      { x: -22.2, y: 3.4, rot: -0.6, sx: 0.28, sy: 0.38, geo: createOrganicSplatterGeometry(22.4, 0.28, 6, 0.08) },
+      { x: -19.2, y: 2.45, rot: 0.45, sx: 0.42, sy: 0.52, geo: createOrganicSplatterGeometry(23.7, 0.38, 5, 0.10) },
+      { x: -16.9, y: 1.25, rot: -0.3, sx: 0.36, sy: 0.48, geo: createOrganicSplatterGeometry(24.9, 0.32, 6, 0.09) },
+      { x: -13.8, y: 3.1, rot: 0.75, sx: 0.34, sy: 0.42, geo: createOrganicSplatterGeometry(26.1, 0.30, 5, 0.085) },
+      { x: -11.4, y: 2.05, rot: -0.5, sx: 0.44, sy: 0.56, geo: createOrganicSplatterGeometry(27.3, 0.40, 7, 0.11) },
+      { x: -8.3, y: 1.55, rot: 0.15, sx: 0.35, sy: 0.46, geo: createOrganicSplatterGeometry(28.5, 0.33, 5, 0.09) },
+      { x: -5.9, y: 3.45, rot: -0.7, sx: 0.30, sy: 0.40, geo: createOrganicSplatterGeometry(29.7, 0.29, 6, 0.08) },
+      { x: -3.1, y: 2.3, rot: 0.4, sx: 0.38, sy: 0.48, geo: createOrganicSplatterGeometry(30.8, 0.34, 5, 0.095) },
+    ].map((c) => ({ ...c, z: wallSurfaceZ(c.x, c.y) + 0.065 }));
+
+    // Crushed bodies mangled & half-absorbed into the slimy wall
+    const crushedBodies = [
+      { x: -23.0, y: 2.05, rotZ: -0.38, skin: "#6e473b" },
+      { x: -17.7, y: 1.85, rotZ: 2.65, skin: "#7a5343" },
+      { x: -12.3, y: 2.35, rotZ: 0.48, skin: "#653e38" },
+      { x: -7.1, y: 1.72, rotZ: -2.55, skin: "#744c3d" },
+      { x: -3.4, y: 2.25, rotZ: 0.24, skin: "#5e3c36" },
+    ].map((b) => ({ ...b, z: wallSurfaceZ(b.x, b.y) + 0.08 }));
+
+    // Hanging pustule tendrils & floor slime pools
+    const drips = Array.from({ length: 24 }, (_, i) => {
+      const x = -26.0 + i * 1.06 + Math.sin(i * 2.1) * 0.18;
+      const y = 3.9 - (i % 4) * 0.22;
+      return {
+        x,
+        y,
+        z: wallSurfaceZ(x, y) + 0.08,
+        len: 0.45 + (i % 5) * 0.16,
+        r: 0.045 + (i % 3) * 0.022,
+        kind: i % 4 === 0 ? "milk" : i % 3 === 0 ? "blood" : "slime",
+      };
+    });
+
+    return {
+      wallGeo,
+      wallMat,
+      bloodSplatterMat,
+      greenSlimeMat,
+      milkyClumpMat,
+      bloodSplatters,
+      slimeSplatters,
+      milkyClumps,
+      crushedBodies,
+      drips,
+      textures: [normalMap, roughnessMap, bumpMap],
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      wallAssets.wallGeo.dispose();
+      wallAssets.wallMat.dispose();
+      wallAssets.bloodSplatterMat.dispose();
+      wallAssets.greenSlimeMat.dispose();
+      wallAssets.milkyClumpMat.dispose();
+      wallAssets.bloodSplatters.forEach((s) => s.geo.dispose());
+      wallAssets.slimeSplatters.forEach((s) => s.geo.dispose());
+      wallAssets.milkyClumps.forEach((c) => c.geo.dispose());
+      wallAssets.textures.forEach((t) => t.dispose());
+    };
+  }, [wallAssets]);
+
+  return (
+    <group>
+      {/* Undulating organic fleshy slime wall */}
+      <mesh geometry={wallAssets.wallGeo} material={wallAssets.wallMat} castShadow receiveShadow />
+
+      {/* Thick dark arterial veins & swollen pustule blisters */}
+      {Array.from({ length: 20 }, (_, i) => (
+        <group key={`vein-${i}`} position={[-25.8 + i * 1.24, 0, -1.66]}>
+          <mesh position={[0, 2.35, 0]} rotation={[0.05, 0, Math.sin(i * 1.9) * 0.24]}>
+            <capsuleGeometry args={[0.042, 3.8 + (i % 3) * 0.4, 5, 10]} />
+            <meshPhysicalMaterial color={i % 2 === 0 ? "#3f1415" : "#263612"} roughness={0.22} clearcoat={0.85} />
+          </mesh>
+          <mesh position={[0.25, 0.9 + (i % 4) * 0.85, 0.04]} scale={[0.22 + (i % 3) * 0.06, 0.28, 0.14]}>
+            <sphereGeometry args={[1, 14, 10]} />
+            <meshPhysicalMaterial color={i % 3 === 0 ? "#5c7025" : "#40521b"} roughness={0.14} clearcoat={0.95} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Irregular crimson blood splatters & dripping gore streaks */}
+      {wallAssets.bloodSplatters.map((s, i) => (
+        <group key={`blood-${i}`} position={[s.x, s.y, s.z]} rotation={[0, 0, s.rot]}>
+          <mesh geometry={s.geo} material={wallAssets.bloodSplatterMat} receiveShadow />
+          <mesh position={[0.14, -0.75, 0.02]} material={wallAssets.bloodSplatterMat}>
+            <capsuleGeometry args={[0.035, 0.95, 5, 8]} />
+          </mesh>
+          <mesh position={[-0.18, -0.58, 0.02]} material={wallAssets.bloodSplatterMat}>
+            <capsuleGeometry args={[0.026, 0.68, 5, 8]} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Irregular toxic green slime stains */}
+      {wallAssets.slimeSplatters.map((s, i) => (
+        <mesh
+          key={`slime-${i}`}
+          geometry={s.geo}
+          material={wallAssets.greenSlimeMat}
+          position={[s.x, s.y, s.z]}
+          rotation={[0, 0, s.rot]}
+        />
+      ))}
+
+      {/* Milky-white curdled globs & viscous clumps stuck onto the wall */}
+      {wallAssets.milkyClumps.map((c, i) => (
+        <group key={`milk-${i}`} position={[c.x, c.y, c.z]} rotation={[0, 0, c.rot]}>
+          <mesh geometry={c.geo} material={wallAssets.milkyClumpMat} scale={[c.sx * 2.2, c.sy * 2.1, 1]} castShadow />
+          <mesh position={[0.08, -0.26, 0.03]} material={wallAssets.milkyClumpMat}>
+            <capsuleGeometry args={[0.042, 0.36, 6, 10]} />
+          </mesh>
+          <mesh position={[-0.09, 0.09, 0.05]} scale={[0.12, 0.14, 0.09]} material={wallAssets.milkyClumpMat}>
+            <sphereGeometry args={[1, 12, 10]} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Crushed, mangled bodies embedded in the wall with exposed ribs & torn flesh */}
+      {wallAssets.crushedBodies.map((body, i) => (
+        <group key={`crushed-${i}`} position={[body.x, body.y, body.z]} rotation={[0.08, 0, body.rotZ]}>
+          {/* Flattened crushed torso */}
+          <mesh scale={[0.56, 0.72, 0.19]} castShadow>
+            <sphereGeometry args={[1, 16, 12]} />
+            <meshPhysicalMaterial color={body.skin} roughness={0.34} clearcoat={0.75} />
+          </mesh>
+          {/* Ruptured blood cavity across crushed chest */}
+          <mesh position={[0.02, 0.06, 0.14]} scale={[0.42, 0.48, 0.07]} material={wallAssets.bloodSplatterMat}>
+            <sphereGeometry args={[1, 12, 10]} />
+          </mesh>
+          {/* Exposed pale cracked ribs protruding from the squashed chest */}
+          {[-0.14, -0.02, 0.1, 0.22].map((ry, rIdx) => (
+            <mesh key={rIdx} position={[0.02, ry, 0.17]} rotation={[0, 0, (rIdx % 2 === 0 ? 1 : -1) * 0.22]}>
+              <boxGeometry args={[0.48 - rIdx * 0.04, 0.042, 0.06]} />
+              <meshStandardMaterial color="#cfc4ac" roughness={0.58} />
+            </mesh>
+          ))}
+          {/* Squashed sunken skull/head */}
+          <group position={[0, 0.74, 0.05]} rotation={[0.2, 0, -0.25]}>
+            <mesh scale={[0.32, 0.34, 0.16]}>
+              <sphereGeometry args={[1, 14, 10]} />
+              <meshPhysicalMaterial color={body.skin} roughness={0.32} clearcoat={0.8} />
+            </mesh>
+            <mesh position={[0, -0.1, 0.13]} scale={[0.16, 0.09, 0.05]}>
+              <sphereGeometry args={[1, 10, 8]} />
+              <meshStandardMaterial color="#2a0609" />
+            </mesh>
+          </group>
+          {/* Twisted mangled arms & legs splayed into the wall */}
+          <mesh position={[-0.58, 0.35, 0.04]} rotation={[0, 0, 0.92]} scale={[1, 1, 0.45]}>
+            <capsuleGeometry args={[0.11, 0.62, 6, 10]} />
+            <meshPhysicalMaterial color={body.skin} roughness={0.32} clearcoat={0.75} />
+          </mesh>
+          <mesh position={[0.56, 0.22, 0.04]} rotation={[0, 0, -0.78]} scale={[1, 1, 0.45]}>
+            <capsuleGeometry args={[0.11, 0.58, 6, 10]} />
+            <meshPhysicalMaterial color={body.skin} roughness={0.32} clearcoat={0.75} />
+          </mesh>
+          <mesh position={[-0.28, -0.72, 0.03]} rotation={[0, 0, 0.28]} scale={[1, 1, 0.45]}>
+            <capsuleGeometry args={[0.13, 0.65, 6, 10]} />
+            <meshStandardMaterial color="#273c5d" roughness={0.85} />
+          </mesh>
+          <mesh position={[0.3, -0.68, 0.03]} rotation={[0, 0, -0.35]} scale={[1, 1, 0.45]}>
+            <capsuleGeometry args={[0.13, 0.62, 6, 10]} />
+            <meshStandardMaterial color="#273c5d" roughness={0.85} />
+          </mesh>
+          {/* Thick milky residue & green slime oozing around the crushed corpse */}
+          <mesh position={[0.24, -0.18, 0.14]} scale={[0.16, 0.22, 0.07]} material={wallAssets.milkyClumpMat}>
+            <sphereGeometry args={[1, 10, 8]} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Hanging thick slime, milky drips & blood tendrils from top rim */}
+      {wallAssets.drips.map((d, i) => (
+        <mesh
+          key={`drip-${i}`}
+          position={[d.x, d.y, d.z]}
+          material={
+            d.kind === "milk"
+              ? wallAssets.milkyClumpMat
+              : d.kind === "blood"
+                ? wallAssets.bloodSplatterMat
+                : wallAssets.greenSlimeMat
+          }
+        >
+          <capsuleGeometry args={[d.r, d.len, 5, 10]} />
+        </mesh>
+      ))}
+
+      {/* Irregular oozing green slime & blood puddles pooling at the wall base */}
+      {wallAssets.slimeSplatters.map((s, i) => (
+        <mesh
+          key={`pool-${i}`}
+          geometry={s.geo}
+          material={i % 2 === 0 ? wallAssets.greenSlimeMat : wallAssets.bloodSplatterMat}
+          position={[s.x + 0.35, 0.035, -1.48]}
+          rotation={[-Math.PI / 2, 0, s.rot * 1.4]}
+          scale={[1.05, 0.68, 0.45]}
+        />
+      ))}
+    </group>
+  );
 }
 
 function ForestZone() {
@@ -458,6 +868,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const pickups=useRef<PickupState[]>(initialPickups.map(p=>({...p})));
   const motion=useRef<RickMotion>({moving:false,attackTime:0,attackStyle:null,attackProgress:0,grabTime:0,jumpHeight:0,weapon:null});
   const pipeCombo=useRef<PipeCombo|null>(null);
+  const pendingShotgun=useRef<{timer:number;targetId:number|null}|null>(null);
   const macheteAttackVariant=useRef<"head"|"arm">("head");
   const [phase,setPhase]=useState<1|2>(1);
   const [initialEnemiesVisible,setInitialEnemiesVisible]=useState(false);
@@ -551,6 +962,22 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     return result;
   };
 
+  const findShotgunTarget=(px:number,pz:number)=>{
+    let bestTarget:EnemyState|null=null;
+    let bestDist=9.5;
+    for(const e of enemies.current){
+      if(!e.alive)continue;
+      if(phase===1&&e.id<=14&&!initialEnemiesVisible)continue;
+      if(Math.abs(e.z-pz)>1.8)continue;
+      const dx=e.x-px,dz=e.z-pz;
+      const dot=dx*attackDirection.current.x+dz*attackDirection.current.z;
+      if(dot<-0.35)continue;
+      const d=Math.hypot(dx,dz);
+      if(d<bestDist){bestDist=d;bestTarget=e;}
+    }
+    return bestTarget;
+  };
+
   const doPickup=()=>{
     if(phase!==1||!player.current)return;
     // Weapons are collected in the intended progression: pipe, machete, shotgun.
@@ -623,7 +1050,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       return;
     }
     attackCooldown.current=equipped==="shotgun"?0.62:equipped==="machete"?0.56:0.42;
-    motion.current.attackTime=equipped==="shotgun"?0.34:equipped==="machete"?0.56:0.36;
+    motion.current.attackTime=equipped==="shotgun"?0.42:equipped==="machete"?0.56:0.36;
     const macheteStyle=equipped==="machete"?macheteAttackVariant.current:null;
     if(macheteStyle)macheteAttackVariant.current=macheteStyle==="head"?"arm":"head";
     motion.current.attackStyle=macheteStyle==="head"?"macheteHead":macheteStyle==="arm"?"macheteArm":null;
@@ -632,22 +1059,25 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     if(equipped==="shotgun"){
       if(ammo<=0)return;
       setAmmo(a=>a-1);
-      const e=nearest(9.5, 1.45);
-      if(e&&(e.x-px)*attackDirection.current.x+(e.z-(player.current?.position.z??0))*attackDirection.current.z>=-0.35){
-        e.alive=false;
-        e.headless=true;
-        e.bodyState="falling";
-        e.knocked=0.65;
-        e.fall=attackDirection.current.x||attackDirection.current.z;
-        e.vx=attackDirection.current.x*4.5;
-        const headHeight=e.kind==="crawler"?1.05:1.65;
-        // Shot impact and gore originate at the creature's head, not its feet or torso.
-        spawnGore(e.x,headHeight,e.z,22,5.5,9);
-        addBloodPool(e.x,e.z,1.1);
-        onKill();
-        onScore(100);
-        setEnemyVersion(v=>v+1);
+      const pz=player.current?.position.z??0;
+      const py=player.current?.position.y??0;
+      const target=findShotgunTarget(px,pz);
+      if(target){
+        const dx=target.x-px;
+        const dz=target.z-pz;
+        const fx=attackDirection.current.x;
+        const fz=attackDirection.current.z;
+        const localFwd=Math.max(0.75,dx*fx+dz*fz);
+        const localX=dx*(-fz)+dz*fx;
+        const headY=target.y+(target.kind==="crawler"?1.05:1.65);
+        const muzzleY=py+1.34;
+        motion.current.shotgunAimPitch=THREE.MathUtils.clamp(Math.atan2(headY-muzzleY,localFwd),-0.22,0.52);
+        motion.current.shotgunAimYaw=THREE.MathUtils.clamp(-Math.atan2(localX,localFwd),-0.55,0.55);
+      }else{
+        motion.current.shotgunAimPitch=0.18;
+        motion.current.shotgunAimYaw=0;
       }
+      pendingShotgun.current={timer:0.085,targetId:target?.id??null};
       return;
     }
 
@@ -838,6 +1268,31 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     }
     motion.current.grabTime=Math.max(0,motion.current.grabTime-dt);
     const px=player.current.position.x, pz=player.current.position.z;
+    if(pendingShotgun.current){
+      pendingShotgun.current.timer-=dt;
+      if(pendingShotgun.current.timer<=0){
+        const shot=pendingShotgun.current;
+        pendingShotgun.current=null;
+        const target=
+          (shot.targetId!==null?enemies.current.find(en=>en.id===shot.targetId&&en.alive):undefined)??
+          findShotgunTarget(px,pz);
+        if(target){
+          target.alive=false;
+          target.headless=true;
+          target.bodyState="falling";
+          target.knocked=0.65;
+          target.fall=attackDirection.current.x||attackDirection.current.z;
+          target.vx=attackDirection.current.x*4.5;
+          const headHeight=target.kind==="crawler"?1.05:1.65;
+          // Shot blast originates at the aimed monster head and explodes it into gore + skull shards.
+          spawnGore(target.x,headHeight,target.z,28,6.2,11);
+          addBloodPool(target.x,target.z,1.15);
+          onKill();
+          onScore(100);
+          setEnemyVersion(v=>v+1);
+        }
+      }
+    }
 
     if(phase===1){
       const close=pickups.current.some(p=>!p.collected&&Math.hypot(px-p.x,pz-p.z)<1.4);
@@ -1170,6 +1625,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-25.5,63.8);
       if(player.current.position.x>=62.5){
         setPhase(2);onStageChange(2);player.current.position.set(0,0,9);
+        pendingShotgun.current=null;
         enemies.current.forEach(e=>{e.alive=false;e.bodyState="alive";});
         // The hall is an arena: its first wave enters from several sides, not a single corridor.
         const hallWave=[
