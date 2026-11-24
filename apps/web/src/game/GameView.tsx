@@ -258,10 +258,29 @@ function MansionRoom({player}:{player:React.RefObject<THREE.Group|null>}) {
     {Array.from({length:13},(_,i)=><mesh key={"stair-nosing-"+i} position={[0,0.36+i*0.26,4.72-i*0.59]} castShadow>
       <boxGeometry args={[5.86,0.075,0.12]}/><meshStandardMaterial color={brass} metalness={0.28} roughness={0.62}/>
     </mesh>)}
-    {/* Continuous upper-storey deck connecting the landing and both galleries. */}
-    <mesh position={[0,3.29,-3.05]} castShadow receiveShadow>
-      <boxGeometry args={[24.4,0.42,3.8]}/><meshStandardMaterial color="#49382e" roughness={0.88}/>
+    {/* Upper-storey deck now runs all the way to the rear wall. */}
+    <mesh position={[0,3.29,-9.65]} castShadow receiveShadow>
+      <boxGeometry args={[24.4,0.42,16.0]}/><meshStandardMaterial color="#49382e" roughness={0.88}/>
     </mesh>
+    {/* Framed painting and antique clock mounted on the rear wall, visible from the upper deck. */}
+    <group position={[-4.2,6.9,-17.48]}>
+      <mesh castShadow><boxGeometry args={[2.45,1.9,0.18]}/><meshStandardMaterial color="#74502f" metalness={0.18} roughness={0.55}/></mesh>
+      <mesh position={[0,0,0.105]}><boxGeometry args={[2.16,1.61,0.035]}/><meshStandardMaterial color="#211512" roughness={0.95}/></mesh>
+      <mesh position={[0,0,0.13]}><planeGeometry args={[2.02,1.47]}/><meshStandardMaterial color="#713b35" roughness={0.9}/></mesh>
+      <mesh position={[0,-0.18,0.15]}><circleGeometry args={[0.48,32]}/><meshStandardMaterial color="#a98a5b" roughness={0.82}/></mesh>
+      <mesh position={[0,-0.18,0.17]}><circleGeometry args={[0.035,12]}/><meshStandardMaterial color="#241711"/></mesh>
+      <mesh position={[0.12,-0.02,0.18]} rotation={[0,0,-0.62]}><boxGeometry args={[0.035,0.32,0.025]}/><meshStandardMaterial color="#241711"/></mesh>
+      <mesh position={[-0.08,-0.02,0.18]} rotation={[0,0,0.9]}><boxGeometry args={[0.03,0.25,0.025]}/><meshStandardMaterial color="#241711"/></mesh>
+    </group>
+    <group position={[4.35,7.0,-17.48]}>
+      <mesh castShadow><boxGeometry args={[1.42,1.72,0.2]}/><meshStandardMaterial color="#4a2c1d" roughness={0.72}/></mesh>
+      <mesh position={[0,0.08,0.12]}><circleGeometry args={[0.58,40]}/><meshStandardMaterial color="#d2bd8b" roughness={0.72}/></mesh>
+      <mesh position={[0,0.08,0.145]}><ringGeometry args={[0.52,0.57,40]}/><meshStandardMaterial color="#8a633b" metalness={0.45}/></mesh>
+      <mesh position={[0,0.08,0.16]}><circleGeometry args={[0.035,12]}/><meshStandardMaterial color="#211710"/></mesh>
+      <mesh position={[0.08,0.25,0.17]} rotation={[0,0,-0.55]}><boxGeometry args={[0.035,0.32,0.025]}/><meshStandardMaterial color="#211710"/></mesh>
+      <mesh position={[-0.14,0.02,0.17]} rotation={[0,0,1.1]}><boxGeometry args={[0.035,0.43,0.025]}/><meshStandardMaterial color="#211710"/></mesh>
+      <mesh position={[0,-0.78,0.12]}><boxGeometry args={[0.42,0.16,0.14]}/><meshStandardMaterial color="#8a633b" metalness={0.35}/></mesh>
+    </group>
     {[-1,1].map(side=><group key={"upper-wing-"+side}>
        
       <mesh position={[side*7.25,4.2,-4.22]}><boxGeometry args={[8.8,0.12,0.12]}/><meshStandardMaterial color={brass} metalness={0.32}/></mesh>
@@ -400,6 +419,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const [equipped,setEquipped]=useState<WeaponId|null>(null);
   const [ammo,setAmmo]=useState(16);
   const facing=useRef(1);
+  const upperDeckAccess=useRef(false);
   const attackCooldown=useRef(0),grabCooldown=useRef(0),jumpVelocity=useRef(0),grounded=useRef(true);
   const [,setEnemyVersion]=useState(0);
   const lastActions=useRef({attack:false,grab:false,jump:false,pickup:false});
@@ -656,10 +676,36 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     const moving=Math.abs(dx)+Math.abs(dz)>0.08;motion.current.moving=moving;
     if(moving){
       const v=new THREE.Vector3(dx,0,dz).normalize();
-      player.current.position.x+=v.x*4.25*dt;
+      const stepX=v.x*4.25*dt;
       const depthSpeed=phase===2?4.25:2.1;
-      player.current.position.z+=v.z*depthSpeed*dt;
-      if(phase===1)player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-1.35,1.35);
+      const stepZ=v.z*depthSpeed*dt;
+      if(phase===1){
+        player.current.position.x+=stepX;
+        player.current.position.z=THREE.MathUtils.clamp(player.current.position.z+stepZ,-1.35,1.35);
+      }else{
+        const px=player.current.position.x,pz=player.current.position.z;
+        const nextX=THREE.MathUtils.clamp(px+stepX,-15.1,15.1);
+        const nextZ=THREE.MathUtils.clamp(pz+stepZ,-17.25,20.4);
+        const onStairNow=Math.abs(px)<=2.95&&pz>=-2.45&&pz<=5.35&&player.current.position.y>0.05;
+        const entersStairFromFront=pz>4.75&&nextZ<pz&&Math.abs(nextX)<=2.85&&nextZ>=-2.45&&nextZ<=5.35;
+        if(entersStairFromFront)upperDeckAccess.current=true;
+        const blockedByStair=(x:number,z:number)=>Math.abs(x)<3.25&&z>-2.55&&z<5.55&&!upperDeckAccess.current;
+        const blockedByFurniture=(x:number,z:number)=>{
+          const sofa=((x+10.2)/2.45)**2+((z-1.8)/1.22)**2<1;
+          const chairA=Math.hypot(x-8.4,z-4.8)<0.92;
+          const chairB=Math.hypot(x+7.8,z+7.1)<0.88;
+          return player.current!.position.y<0.55&&(sofa||chairA||chairB);
+        };
+        const canMove=(x:number,z:number)=>!blockedByStair(x,z)&&!blockedByFurniture(x,z);
+        if(canMove(nextX,pz))player.current.position.x=nextX;
+        const resolvedX=player.current.position.x;
+        if(canMove(resolvedX,nextZ))player.current.position.z=nextZ;
+        if(onStairNow||entersStairFromFront)upperDeckAccess.current=true;
+        if(player.current.position.y<0.05&&player.current.position.z>5.55)upperDeckAccess.current=false;
+        if(player.current.position.x>12.35||player.current.position.x< -12.35||player.current.position.z< -17.3) {
+          if(player.current.position.y<0.1)upperDeckAccess.current=false;
+        }
+      }
       if(Math.abs(dx)>0.05)facing.current=dx>0?1:-1;
       player.current.rotation.y=facing.current>0?-Math.PI/2:Math.PI/2;
     }
@@ -942,15 +988,17 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       }
     }else{
       player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-15.1,15.1);
-      player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-15.6,20.4);
-      // Walkable height follows the central staircase and its upper left/right galleries.
+      player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-17.25,20.4);
+      // Only the front-facing staircase grants access to the upper-storey deck.
       const stairX=Math.abs(player.current.position.x);
       const stairZ=player.current.position.z;
-      const onStair=stairX<=2.95&&stairZ>=-2.25&&stairZ<=5.2;
-      const onUpperGallery=stairZ>=-4.8&&stairZ<=-1.25&&stairX<=12.0;
+      const onStair=upperDeckAccess.current&&stairX<=2.95&&stairZ>=-2.45&&stairZ<=5.2;
+      const onUpperGallery=upperDeckAccess.current&&stairZ>=-17.25&&stairZ<=-1.55&&stairX<=12.0;
       if(onUpperGallery)player.current.position.y=3.5;
       else if(onStair)player.current.position.y=THREE.MathUtils.clamp((5.2-stairZ)/7.45,0,1)*3.5;
       else player.current.position.y=0;
+      const underUpperDeck=player.current.position.y<2.5&&stairX<=12.25&&stairZ>=-17.25&&stairZ<=-2.55;
+      player.current.visible=!underUpperDeck;
     }
 
     const targetX=player.current.position.x;
