@@ -107,18 +107,39 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     };
     const skinMap = makeTexture("#bd8068", "#f0c1a2", 13);
     const denimMap = makeTexture("#294b82", "#8da4c5", 29);
-    const skin = new THREE.MeshPhysicalMaterial({ color: "#d0a087", map: skinMap, roughness: 0.62, clearcoat: 0.12, clearcoatRoughness: 0.7 });
-    const skinLight = new THREE.MeshPhysicalMaterial({ color: "#e0ad91", map: skinMap, roughness: 0.58, clearcoat: 0.16 });
+    const makeSkinSurface = (seed: number) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 512;
+      const ctx = canvas.getContext("2d")!;
+      const image = ctx.createImageData(512, 512);
+      for (let i = 0; i < image.data.length; i += 4) {
+        const p = i / 4;
+        const n = Math.sin(p * 0.017 + seed) * 0.5 + Math.sin(p * 0.0031 + seed * 2) * 0.25 + Math.sin(p * 0.071) * 0.12;
+        const v = Math.max(82, Math.min(184, 132 + n * 48 + ((p * 37) % 13)));
+        image.data[i] = image.data[i + 1] = image.data[i + 2] = v;
+        image.data[i + 3] = 255;
+      }
+      ctx.putImageData(image, 0, 0);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(1.5, 1.5);
+      texture.anisotropy = 8;
+      return texture;
+    };
+    const skinSurface = makeSkinSurface(17);
+    const skin = new THREE.MeshPhysicalMaterial({ color: "#d0a087", map: skinMap, roughnessMap: skinSurface, bumpMap: skinSurface, bumpScale: 0.026, roughness: 0.48, clearcoat: 0.38, clearcoatRoughness: 0.24, sheen: 0.22, sheenRoughness: 0.48 });
+    const skinLight = new THREE.MeshPhysicalMaterial({ color: "#e0ad91", map: skinMap, roughnessMap: skinSurface, bumpMap: skinSurface, bumpScale: 0.022, roughness: 0.46, clearcoat: 0.42, clearcoatRoughness: 0.22, sheen: 0.2 });
     const denim = new THREE.MeshStandardMaterial({ color: "#ffffff", map: denimMap, roughness: 0.9 });
     const denimLight = new THREE.MeshStandardMaterial({ color: "#5276a7", map: denimMap, roughness: 0.88 });
     const mask = new THREE.MeshPhysicalMaterial({ color: "#e0ddd1", roughness: 0.42, metalness: 0.035, clearcoat: 0.35 });
     const maskShade = new THREE.MeshStandardMaterial({ color: "#1c1a1d", roughness: 0.78 });
-    const blood = new THREE.MeshPhysicalMaterial({ color: "#4c1119", roughness: 0.4, clearcoat: 0.25 });
+    const blood = new THREE.MeshPhysicalMaterial({ color: "#641019", roughness: 0.24, metalness: 0.015, clearcoat: 0.92, clearcoatRoughness: 0.09 });
+    const sweat = new THREE.MeshPhysicalMaterial({ color: "#d9b6a0", roughness: 0.07, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.025, transparent: true, opacity: 0.82 });
     const boot = new THREE.MeshPhysicalMaterial({ color: "#171518", roughness: 0.48, clearcoat: 0.3 });
     const bootSole = new THREE.MeshStandardMaterial({ color: "#393238", roughness: 0.8 });
     const seam = new THREE.MeshStandardMaterial({ color: "#91a7c4", roughness: 0.88 });
     const metal = new THREE.MeshStandardMaterial({ color: "#a99a7c", metalness: 0.82, roughness: 0.24 });
-    return { skin, skinLight, denim, denimLight, mask, maskShade, blood, boot, bootSole, seam, metal };
+    return { skin, skinLight, denim, denimLight, mask, maskShade, blood, sweat, boot, bootSole, seam, metal };
   }, []);
 
   const sphere = useMemo(() => new THREE.SphereGeometry(1, 56, 40), []);
@@ -330,12 +351,28 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
           {ellipsoid(sphere, materials.skinLight, [0.09,y,-0.205], [0.083,0.068,0.045])}
         </group>)}
         {ellipsoid(sphere, materials.skin, [0,-0.18,-0.20], [0.035,0.025,0.018])}
+        {/* Irregular fresh blood smears and small coagulated droplets across the chest and abdomen */}
+        {ellipsoid(sphere, materials.blood, [-0.28,0.68,-0.245], [0.105,0.035,0.018])}
+        {ellipsoid(sphere, materials.blood, [-0.34,0.62,-0.246], [0.045,0.065,0.016])}
+        {ellipsoid(sphere, materials.blood, [0.23,0.42,-0.232], [0.12,0.026,0.014])}
+        {ellipsoid(sphere, materials.blood, [0.19,0.36,-0.235], [0.035,0.074,0.014])}
+        {ellipsoid(sphere, materials.blood, [-0.09,0.05,-0.238], [0.07,0.025,0.014])}
+        {ellipsoid(sphere, materials.blood, [0.31,0.73,-0.19], [0.045,0.018,0.012])}
+        {/* Sweat beads catch the scene lights; varied sizes avoid a uniform plastic sheen */}
+        {ellipsoid(sphere, materials.sweat, [-0.22,0.83,-0.245], [0.018,0.032,0.012])}
+        {ellipsoid(sphere, materials.sweat, [0.12,0.76,-0.272], [0.012,0.024,0.01])}
+        {ellipsoid(sphere, materials.sweat, [0.34,0.51,-0.18], [0.016,0.038,0.012])}
+        {ellipsoid(sphere, materials.sweat, [-0.14,0.29,-0.226], [0.011,0.027,0.009])}
+        {ellipsoid(sphere, materials.sweat, [0.04,-0.02,-0.235], [0.014,0.03,0.01])}
         <group ref={leftArm} position={[-0.47,0.61,0]}>
           {ellipsoid(sphere, materials.skinLight, [0,0,0], [0.245,0.25,0.235])}
           {ellipsoid(sphere, materials.skin, [-0.025,-0.20,0.01], [0.19,0.245,0.18],)}
           <mesh geometry={capsule} material={materials.skin} position={[-0.035,-0.29,0]} rotation={[0,0,0.08]} castShadow receiveShadow />
           {ellipsoid(sphere, materials.skinLight, [-0.06,-0.52,0], [0.15,0.16,0.15])}
           {ellipsoid(sphere, materials.blood, [-0.12,0.06,-0.17], [0.11,0.045,0.025])}
+          {ellipsoid(sphere, materials.blood, [-0.08,-0.12,-0.166], [0.045,0.07,0.018])}
+          {ellipsoid(sphere, materials.sweat, [-0.12,-0.31,-0.145], [0.014,0.04,0.012])}
+          {ellipsoid(sphere, materials.sweat, [0.02,-0.43,-0.12], [0.012,0.03,0.01])}
           <group ref={leftForearm} position={[-0.06,-0.52,0]}>
             <mesh geometry={capsule} material={materials.skin} position={[-0.02,-0.24,-0.015]} rotation={[0,0,0.04]} castShadow receiveShadow />
             {ellipsoid(sphere, materials.skinLight, [-0.03,-0.47,-0.025], [0.15,0.14,0.15])}
@@ -348,6 +385,9 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
           {ellipsoid(sphere, materials.skinLight, [0.06,-0.52,0], [0.16,0.17,0.16])}
           {ellipsoid(sphere, materials.skin, [0.04,-0.57,0.09], [0.095,0.12,0.075])}
           {ellipsoid(sphere, materials.blood, [0.11,0.08,-0.17], [0.08,0.035,0.02])}
+          {ellipsoid(sphere, materials.blood, [0.15,-0.01,-0.168], [0.035,0.06,0.016])}
+          {ellipsoid(sphere, materials.sweat, [0.12,-0.28,-0.14], [0.013,0.034,0.011])}
+          {ellipsoid(sphere, materials.sweat, [-0.025,-0.42,-0.12], [0.012,0.03,0.01])}
           <group ref={rightForearm} position={[0.06,-0.52,0]}>
             <mesh geometry={capsule} material={materials.skin} position={[0.02,-0.24,-0.015]} rotation={[0,0,-0.04]} castShadow receiveShadow />
             {ellipsoid(sphere, materials.skinLight, [0.03,-0.47,-0.025], [0.16,0.15,0.15])}
