@@ -11,8 +11,10 @@ type BodyState = "alive" | "wallFlying" | "wallStuck" | "falling" | "fallen" | "
 type EnemyState = {
   id:number; x:number; y:number; z:number; health:number; alive:boolean; kind:EnemyKind;
   knocked:number; vx:number; vy:number; vz:number; fall:number; animation:number;
-  activated:boolean; bodyState:BodyState; stickRot:number; targetZ:number; headless:boolean; grabTimer:number;
+  activated:boolean; bodyState:BodyState; stickRot:number; targetZ:number; headless:boolean; grabTimer:number; spitCooldown:number;
 };
+type SpitProjectile = {id:number;x:number;y:number;z:number;vx:number;vy:number;vz:number;age:number};
+type SpitSplash = {id:number;x:number;z:number;age:number};
 type SeveredHead = {
   id:number; kind:EnemyKind; x:number; y:number; z:number;
   vx:number; vy:number; vz:number; rotZ:number; stuck:boolean; targetZ:number;
@@ -26,7 +28,7 @@ type CombatEffect = {
 
 const makeEnemy = (id:number, x:number, z:number, kind:EnemyKind, animation:number, activated=false): EnemyState => ({
   id, x, y:0, z, health:kind==="brute"?3:2, alive:true, kind, knocked:0,
-  vx:0, vy:0, vz:0, fall:0, animation, activated, bodyState:"alive", stickRot:0, targetZ:-1.72, headless:false, grabTimer:0
+  vx:0, vy:0, vz:0, fall:0, animation, activated, bodyState:"alive", stickRot:0, targetZ:-1.72, headless:false, grabTimer:0, spitCooldown:1.1+Math.random()*1.4
 });
 
 const initialEnemies: EnemyState[] = [
@@ -202,7 +204,7 @@ function MansionRoom({player}:{player:React.RefObject<THREE.Group|null>}) {
   const wallOpacity=useRef(1);
   useFrame(()=>{
     const playerZ=player.current?.position.z??0;
-    const fade=THREE.MathUtils.smoothstep(playerZ,17,20.2);
+    const fade=THREE.MathUtils.smoothstep(playerZ,25.2,28.4);
     const nextOpacity=THREE.MathUtils.lerp(1,0.16,fade);
     if(Math.abs(nextOpacity-wallOpacity.current)<0.008)return;
     wallOpacity.current=nextOpacity;
@@ -220,21 +222,57 @@ function MansionRoom({player}:{player:React.RefObject<THREE.Group|null>}) {
   });
   return <group>
     {/* Broad stone-and-wood floor: the playable room extends well beyond the camera view. */}
-    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.08,4.5]} receiveShadow>
-      <planeGeometry args={[34,45]}/><meshStandardMaterial color="#302720" roughness={0.94}/>
+    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.08,8.5]} receiveShadow>
+      <planeGeometry args={[34,53]}/><meshStandardMaterial color="#302720" roughness={0.94}/>
     </mesh>
-    {Array.from({length:13},(_,i)=><mesh key={"floor-seam-"+i} rotation={[-Math.PI/2,0,0]} position={[-15.5+i*2.58,0,4.5]}>
-      <planeGeometry args={[0.035,44]}/><meshStandardMaterial color="#17120f" roughness={1}/>
+    {Array.from({length:13},(_,i)=><mesh key={"floor-seam-"+i} rotation={[-Math.PI/2,0,0]} position={[-15.5+i*2.58,0,8.5]}>
+      <planeGeometry args={[0.035,52]}/><meshStandardMaterial color="#17120f" roughness={1}/>
     </mesh>)}
-    {/* Four enclosing walls and a high, dark ceiling rim. */}
+    {/* Four enclosing walls and a high, dark ceiling rim; the lower hall is deeper. */}
     <mesh position={[0,7.2,-18]}><boxGeometry args={[34,14.4,0.65]}/><meshStandardMaterial color="#241b19" roughness={0.96}/></mesh>
     <group ref={frontWallGroup}>
-      <mesh position={[0,7.2,27]}><boxGeometry args={[34,14.4,0.65]}/><meshStandardMaterial color="#211917" roughness={0.96}/></mesh>
-      {[-13,-8,-3,3,8,13].map(x=><mesh key={"front-pilaster-"+x} position={[x,6.8,26.55]}><boxGeometry args={[0.42,13.5,0.35]}/><meshStandardMaterial color="#4a3429" roughness={0.88}/></mesh>)}
+      <mesh position={[0,7.2,35]}><boxGeometry args={[34,14.4,0.65]}/><meshStandardMaterial color="#211917" roughness={0.96}/></mesh>
+      {[-13,-8,-3,3,8,13].map(x=><mesh key={"front-pilaster-"+x} position={[x,6.8,34.55]}><boxGeometry args={[0.42,13.5,0.35]}/><meshStandardMaterial color="#4a3429" roughness={0.88}/></mesh>)}
     </group>
-    <mesh position={[-17,7.2,4.5]}><boxGeometry args={[0.65,14.4,45]}/><meshStandardMaterial color="#2b201d" roughness={0.96}/></mesh>
-    <mesh position={[17,7.2,4.5]}><boxGeometry args={[0.65,14.4,45]}/><meshStandardMaterial color="#2b201d" roughness={0.96}/></mesh>
-    <mesh position={[0,14.2,4.5]}><boxGeometry args={[34,0.5,45]}/><meshStandardMaterial color="#120e0e" roughness={1}/></mesh>
+    <mesh position={[-17,7.2,8.5]}><boxGeometry args={[0.65,14.4,53]}/><meshStandardMaterial color="#2b201d" roughness={0.96}/></mesh>
+    <mesh position={[17,7.2,8.5]}><boxGeometry args={[0.65,14.4,53]}/><meshStandardMaterial color="#2b201d" roughness={0.96}/></mesh>
+    <mesh position={[0,14.2,8.5]}><boxGeometry args={[34,0.5,53]}/><meshStandardMaterial color="#120e0e" roughness={1}/></mesh>
+
+    {/* Jagged stone-floor fractures with branching hairline cracks. */}
+    <group position={[-13.2,-0.052,-11.2]} rotation={[0,0.22,0]}>
+      <mesh><boxGeometry args={[2.05,0.018,0.035]}/><meshStandardMaterial color="#110d0b" roughness={1}/></mesh>
+      <mesh position={[-0.62,0,0.12]} rotation={[0,-0.38,0]}><boxGeometry args={[0.92,0.019,0.028]}/><meshStandardMaterial color="#17110e" roughness={1}/></mesh>
+      <mesh position={[0.22,0,-0.12]} rotation={[0,0.55,0]}><boxGeometry args={[0.82,0.019,0.026]}/><meshStandardMaterial color="#17110e" roughness={1}/></mesh>
+      <mesh position={[0.82,0,0.18]} rotation={[0,-0.72,0]}><boxGeometry args={[0.66,0.019,0.025]}/><meshStandardMaterial color="#17110e" roughness={1}/></mesh>
+    </group>
+    <group position={[12.5,-0.051,-11.5]} rotation={[0,-0.5,0]}>
+      <mesh><boxGeometry args={[2.25,0.018,0.034]}/><meshStandardMaterial color="#120d0b" roughness={1}/></mesh>
+      <mesh position={[-0.55,0,0.13]} rotation={[0,0.62,0]}><boxGeometry args={[0.88,0.019,0.026]}/><meshStandardMaterial color="#19120f" roughness={1}/></mesh>
+      <mesh position={[0.48,0,-0.13]} rotation={[0,-0.42,0]}><boxGeometry args={[1.02,0.019,0.028]}/><meshStandardMaterial color="#19120f" roughness={1}/></mesh>
+      <mesh position={[0.98,0,0.16]} rotation={[0,0.8,0]}><boxGeometry args={[0.62,0.019,0.024]}/><meshStandardMaterial color="#19120f" roughness={1}/></mesh>
+    </group>
+    <group position={[-13.1,-0.052,7.2]} rotation={[0,-0.28,0]}>
+      <mesh><boxGeometry args={[2.55,0.018,0.036]}/><meshStandardMaterial color="#100c0a" roughness={1}/></mesh>
+      <mesh position={[-0.72,0,-0.14]} rotation={[0,0.5,0]}><boxGeometry args={[0.92,0.019,0.028]}/><meshStandardMaterial color="#19120f" roughness={1}/></mesh>
+      <mesh position={[0.28,0,0.14]} rotation={[0,-0.7,0]}><boxGeometry args={[0.98,0.019,0.026]}/><meshStandardMaterial color="#19120f" roughness={1}/></mesh>
+      <mesh position={[1.05,0,-0.1]} rotation={[0,0.36,0]}><boxGeometry args={[0.68,0.019,0.025]}/><meshStandardMaterial color="#19120f" roughness={1}/></mesh>
+    </group>
+    <group position={[12.2,-0.052,13.8]} rotation={[0,0.32,0]}>
+      <mesh><boxGeometry args={[2.6,0.018,0.035]}/><meshStandardMaterial color="#100c0a" roughness={1}/></mesh>
+      <mesh position={[-0.66,0,0.14]} rotation={[0,-0.58,0]}><boxGeometry args={[0.94,0.019,0.027]}/><meshStandardMaterial color="#19120f" roughness={1}/></mesh>
+      <mesh position={[0.35,0,-0.13]} rotation={[0,0.68,0]}><boxGeometry args={[1.02,0.019,0.027]}/><meshStandardMaterial color="#19120f" roughness={1}/></mesh>
+      <mesh position={[1.08,0,0.12]} rotation={[0,-0.35,0]}><boxGeometry args={[0.72,0.019,0.025]}/><meshStandardMaterial color="#19120f" roughness={1}/></mesh>
+    </group>
+    <group position={[-4.8,-0.052,18.8]} rotation={[0,-0.18,0]}>
+      <mesh><boxGeometry args={[2.05,0.018,0.032]}/><meshStandardMaterial color="#100c0a" roughness={1}/></mesh>
+      <mesh position={[-0.52,0,0.13]} rotation={[0,0.62,0]}><boxGeometry args={[0.82,0.019,0.026]}/><meshStandardMaterial color="#19120f" roughness={1}/></mesh>
+      <mesh position={[0.58,0,-0.12]} rotation={[0,-0.55,0]}><boxGeometry args={[0.88,0.019,0.026]}/><meshStandardMaterial color="#19120f" roughness={1}/></mesh>
+    </group>
+    <group position={[4.6,-0.052,21.2]} rotation={[0,0.48,0]}>
+      <mesh><boxGeometry args={[1.8,0.018,0.032]}/><meshStandardMaterial color="#100c0a" roughness={1}/></mesh>
+      <mesh position={[-0.48,0,0.12]} rotation={[0,-0.6,0]}><boxGeometry args={[0.75,0.019,0.026]}/><meshStandardMaterial color="#19120f" roughness={1}/></mesh>
+      <mesh position={[0.52,0,-0.12]} rotation={[0,0.7,0]}><boxGeometry args={[0.7,0.019,0.025]}/><meshStandardMaterial color="#19120f" roughness={1}/></mesh>
+    </group>
     {/* Wall paneling, pilasters and dim gothic sconces. */}
     {[-14,-10,-6,6,10,14].map(x=><group key={"back-panel-"+x} position={[x,4.8,-17.55]}>
       <mesh><boxGeometry args={[2.65,8.4,0.18]}/><meshStandardMaterial color="#382823" roughness={0.86}/></mesh>
@@ -408,6 +446,11 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const severedHeads=useRef<SeveredHead[]>([]);
   const bloodPools=useRef<BloodPool[]>([]);
   const effects=useRef<CombatEffect[]>([]);
+  const spitProjectiles=useRef<SpitProjectile[]>([]);
+  const spitSplashes=useRef<SpitSplash[]>([]);
+  const spitGroups=useRef<Record<number,THREE.Group|null>>({});
+  const splashGroups=useRef<Record<number,THREE.Group|null>>({});
+  const spitHitCooldown=useRef(0);
   const nextEffectId=useRef(1);
   const nextEnemyId=useRef(100);
   const triggeredWaves=useRef(new Set<number>());
@@ -416,14 +459,21 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const motion=useRef<RickMotion>({moving:false,attackTime:0,attackStyle:null,attackProgress:0,grabTime:0,jumpHeight:0,weapon:null});
   const pipeCombo=useRef<PipeCombo|null>(null);
   const [phase,setPhase]=useState<1|2>(1);
+  const [initialEnemiesVisible,setInitialEnemiesVisible]=useState(false);
   const [equipped,setEquipped]=useState<WeaponId|null>(null);
   const [ammo,setAmmo]=useState(16);
   const facing=useRef(1);
+  const attackDirection=useRef({x:1,z:0});
   const upperDeckAccess=useRef(false);
   const attackCooldown=useRef(0),grabCooldown=useRef(0),jumpVelocity=useRef(0),grounded=useRef(true);
   const [,setEnemyVersion]=useState(0);
   const lastActions=useRef({attack:false,grab:false,jump:false,pickup:false});
   const keys=useRef(new Set<string>());
+
+  useEffect(()=>{
+    const spawnTimer=window.setTimeout(()=>setInitialEnemiesVisible(true),2000);
+    return ()=>window.clearTimeout(spawnTimer);
+  },[]);
 
   useEffect(()=>{
     camera.position.set(-24,4.6,18);
@@ -492,6 +542,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     const pz=player.current?.position.z??0;
     for(const e of enemies.current){
       if(!e.alive)continue;
+      if(phase===1&&e.id<=14&&!initialEnemiesVisible)continue;
       if(Math.abs(e.z-pz)>zRange)continue;
       const d=Math.hypot(e.x-px,e.z-pz);
       if(d<best){best=d;result=e;}
@@ -521,19 +572,19 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     const e=nearest(2.8,1.8);
     if(!e)return;
     const px=player.current.position.x;
-    if((e.x-px)*facing.current < -0.4)return;
+    if((e.x-px)*attackDirection.current.x+(e.z-(player.current?.position.z??0))*attackDirection.current.z < -0.4)return;
 
     e.alive=false;
     e.grabTimer=0;
-    e.fall=facing.current;
+    e.fall=attackDirection.current.x||attackDirection.current.z;
     e.vx=0;e.vy=0;e.vz=0;
     if(style==="bat"){
       // Baseball-bat arc: launch the creature backward into the fleshy wall or a foreground tree.
       e.bodyState="wallFlying";
       e.targetZ=targetWallZ(e.x);
-      e.vx=facing.current*2.8;
+      e.vx=attackDirection.current.x*2.8;
       e.vy=5.8;
-      e.vz=-17.5;
+      e.vz=attackDirection.current.z*2.8-(phase===1?17.5:0);
       e.stickRot=(Math.random()-0.5)*0.5;
       spawnGore(e.x,1.25,e.z,18,5.4);
       addBloodPool(e.x,e.z,0.82);
@@ -581,14 +632,16 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       if(ammo<=0)return;
       setAmmo(a=>a-1);
       const e=nearest(9.5, 1.45);
-      if(e&&(e.x-px)*facing.current>=-0.35){
+      if(e&&(e.x-px)*attackDirection.current.x+(e.z-(player.current?.position.z??0))*attackDirection.current.z>=-0.35){
         e.alive=false;
         e.headless=true;
         e.bodyState="falling";
         e.knocked=0.65;
-        e.fall=facing.current;
-        e.vx=facing.current*4.5;
-        spawnGore(e.x,1.65,e.z,22,5.5,9);
+        e.fall=attackDirection.current.x||attackDirection.current.z;
+        e.vx=attackDirection.current.x*4.5;
+        const headHeight=e.kind==="crawler"?1.05:1.65;
+        // Shot impact and gore originate at the creature's head, not its feet or torso.
+        spawnGore(e.x,headHeight,e.z,22,5.5,9);
         addBloodPool(e.x,e.z,1.1);
         onKill();
         onScore(100);
@@ -601,22 +654,22 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     if(!e)return;
 
     if(equipped==="machete"){
-      if((e.x-px)*facing.current<-0.35)return;
+      if((e.x-px)*attackDirection.current.x+(e.z-(player.current?.position.z??0))*attackDirection.current.z<-0.35)return;
       e.alive=false;
       e.headless=true;
       e.bodyState="falling";
       e.knocked=0.65;
       e.fall=facing.current;
-      e.vx=facing.current*2.4;
+      e.vx=attackDirection.current.x*2.4;
       severedHeads.current.push({
         id:nextEffectId.current++,
         kind:e.kind,
         x:e.x,
         y:e.kind==="crawler"?1.05:1.65,
         z:e.z,
-        vx:facing.current*1.8,
+        vx:attackDirection.current.x*1.8,
         vy:4.0,
-        vz:-15.5,
+        vz:attackDirection.current.z*1.8-(phase===1?15.5:0),
         rotZ:(Math.random()-0.5)*0.6,
         stuck:false,
         targetZ:targetWallZ(e.x),
@@ -628,9 +681,9 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       setEnemyVersion(v=>v+1);
     }else{
       // Unarmed punch — original mechanic preserved + extra blood splatter
-      if(Math.sign(e.x-px)!==facing.current)return;
+      if((e.x-px)*attackDirection.current.x+(e.z-(player.current?.position.z??0))*attackDirection.current.z<0)return;
       e.health--;
-      e.vx=facing.current*3.2;
+      e.vx=attackDirection.current.x*3.2;
       spawnGore(e.x,1.15,e.z,e.health<=0?16:10,4.0);
       if(e.health<=0)kill(e);
     }
@@ -640,17 +693,17 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     if(grabCooldown.current>0||!player.current)return;
     const e=nearest(1.95,1.65);
     if(!e)return;
-    if((e.x-player.current.position.x)*facing.current < -0.25)return;
+    if((e.x-player.current.position.x)*attackDirection.current.x+(e.z-player.current.position.z)*attackDirection.current.z < -0.25)return;
     grabCooldown.current=1.35;
     motion.current.grabTime=1.35;
     // Hold the enemy in front of Rick before applying the backward throw impulse.
     e.bodyState="grabLift";
     e.alive=false;
     e.grabTimer=0;
-    e.fall=-facing.current;
+    e.fall=-(attackDirection.current.x||attackDirection.current.z);
     e.vx=0;e.vy=0;e.vz=0;
-    e.x=player.current.position.x+facing.current*0.82;
-    e.z=player.current.position.z;
+    e.x=player.current.position.x+attackDirection.current.x*0.82;
+    e.z=player.current.position.z+attackDirection.current.z*0.82;
     e.y=0.45;
     setEnemyVersion(v=>v+1);
   };
@@ -670,6 +723,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     if(attackHeld&&!prior.attack)doAttack();if(c.grab&&!prior.grab)doGrab();if(c.jump&&!prior.jump)doJump();if(c.pickup&&!prior.pickup)doPickup();
     lastActions.current={attack:attackHeld,grab:c.grab,jump:c.jump,pickup:c.pickup};
     attackCooldown.current=Math.max(0,attackCooldown.current-dt);grabCooldown.current=Math.max(0,grabCooldown.current-dt);
+    spitHitCooldown.current=Math.max(0,spitHitCooldown.current-dt);
     const keyH=Number(keys.current.has("d")||keys.current.has("arrowright"))-Number(keys.current.has("a")||keys.current.has("arrowleft"));
     const keyD=Number(keys.current.has("s")||keys.current.has("arrowdown"))-Number(keys.current.has("w")||keys.current.has("arrowup"));
     const dx=THREE.MathUtils.clamp(c.horizontal+keyH,-1,1),dz=THREE.MathUtils.clamp(c.depth+keyD,-1,1);
@@ -685,7 +739,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       }else{
         const px=player.current.position.x,pz=player.current.position.z;
         const nextX=THREE.MathUtils.clamp(px+stepX,-15.1,15.1);
-        const nextZ=THREE.MathUtils.clamp(pz+stepZ,-17.25,20.4);
+        const nextZ=THREE.MathUtils.clamp(pz+stepZ,-17.25,28.4);
         const onStairNow=Math.abs(px)<=2.95&&pz>=-2.45&&pz<=5.35&&player.current.position.y>0.05;
         const onDeckNow=player.current.position.y>2.5&&Math.abs(px)<=12.0&&pz>=-17.25&&pz<=-1.55;
         const entersStairFromFront=pz>4.75&&nextZ<pz&&Math.abs(nextX)<=2.85&&nextZ>=-2.45&&nextZ<=5.35;
@@ -713,13 +767,15 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       // the 3D character toward the actual travel direction in the free-roam hall.
       if(Math.abs(dx)>0.05)facing.current=dx>0?1:-1;
       if(phase===1){
+        attackDirection.current={x:facing.current,z:0};
         player.current.rotation.y=facing.current>0?-Math.PI/2:Math.PI/2;
       }else{
-        // The character model's forward axis is -Z:
-        // +Z (toward the camera) = front, -Z = back.
+        // Keep combat targeting aligned with the same dominant axis used by the 3D pose.
         if(Math.abs(dz)>Math.abs(dx)){
+          attackDirection.current={x:0,z:dz>0?1:-1};
           player.current.rotation.y=dz>0?Math.PI:0;
         }else if(Math.abs(dx)>0.05){
+          attackDirection.current={x:dx>0?1:-1,z:0};
           player.current.rotation.y=dx>0?-Math.PI/2:Math.PI/2;
         }
       }
@@ -762,7 +818,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       if(close)doPickup();
 
       const spawnWave = (waveId:number, triggerX:number, list:{x:number;z:number;kind:EnemyKind}[]) => {
-        if(px>=triggerX && !triggeredWaves.current.has(waveId)){
+        if(initialEnemiesVisible && px>=triggerX && !triggeredWaves.current.has(waveId)){
           triggeredWaves.current.add(waveId);
           list.forEach((s,idx)=>enemies.current.push(makeEnemy(nextEnemyId.current++, s.x, s.z, s.kind, idx*1.3, true)));
           setEnemyVersion(v=>v+1);
@@ -773,11 +829,13 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       spawnWave(3, 21.0, [{x:29.5,z:-0.65,kind:"brute"},{x:15.0,z:0.6,kind:"crawler"}]);
       spawnWave(4, 31.0, [{x:39.5,z:0.6,kind:"spitter"},{x:25.0,z:-0.6,kind:"crawler"}]);
       spawnWave(5, 41.0, [{x:49.5,z:-0.6,kind:"brute"},{x:36.0,z:0.65,kind:"crawler"}]);
-      spawnWave(6, 51.0, [{x:58.5,z:0.6,kind:"brute"},{x:60.0,z:-0.6,kind:"spitter"}]);
+      spawnWave(6, 51.0, [{x:58.5,z:0.6,kind:"brute"},{x:56.2,z:-0.65,kind:"spitter"},{x:60.0,z:-0.6,kind:"spitter"}]);
     }
 
     enemies.current.forEach((e)=>{
       const group=enemyGroups.current[e.id];
+      // Keep the initial Phase 1 enemies hidden and inactive during the opening delay.
+      if(phase===1 && e.id<=14 && !initialEnemiesVisible)return;
       if(e.bodyState==="grabLift"){
         e.grabTimer+=dt;
         const liftProgress=THREE.MathUtils.clamp(e.grabTimer/0.62,0,1);
@@ -927,6 +985,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       }
       if(!e.alive||!group)return;
       e.animation+=dt*(e.kind==="crawler"?8:e.kind==="brute"?3.2:5);
+      e.spitCooldown=Math.max(0,e.spitCooldown-dt);
       if(e.knocked>0){
         e.knocked=Math.max(0,e.knocked-dt);e.x+=e.vx*dt;e.z+=e.vz*dt;
         e.vx*=Math.max(0,1-dt*3.8);e.vz*=Math.max(0,1-dt*3.8);
@@ -948,6 +1007,21 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
           }
         }
         group.position.y=e.kind==="crawler"?Math.abs(Math.sin(e.animation))*0.035:Math.sin(e.animation*2)*0.025;
+      }
+      // Only the spitters that guard the mansion entrance use the green projectile attack.
+      if(phase===1&&e.kind==="spitter"&&e.x>=52.5&&e.activated&&e.spitCooldown<=0){
+        const dx=px-e.x,dz=pz-e.z,distance=Math.hypot(dx,dz);
+        if(distance>3.2&&distance<11.5){
+          const flight=0.82;
+          const startX=e.x+Math.sign(dx)*0.22,startY=1.72,startZ=e.z+0.18;
+          spitProjectiles.current.push({
+            id:nextEffectId.current++,x:startX,y:startY,z:startZ,
+            vx:(px-startX)/flight,vy:(0.08-startY+4.9*flight*flight)/flight,
+            vz:(pz-startZ)/flight,age:0
+          });
+          e.spitCooldown=2.65;
+          setEnemyVersion(v=>v+1);
+        }
       }
       e.x=THREE.MathUtils.clamp(e.x,phase===1?-25.2:-15.5,phase===1?61.5:15.5);
       e.z=THREE.MathUtils.clamp(e.z,phase===1?-1.35:-16.2,phase===1?1.35:25.5);
@@ -986,6 +1060,46 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     effects.current=effects.current.filter(fx=>fx.age<2.8);
     if(effects.current.length!==beforeEffects)setEnemyVersion(v=>v+1);
 
+    // Integrate the green glob with gravity to create a visible mouth-to-ground arc.
+    let landedSpit=false;
+    spitProjectiles.current.forEach(projectile=>{
+      projectile.age+=dt;
+      projectile.x+=projectile.vx*dt;
+      projectile.y+=projectile.vy*dt;
+      projectile.z+=projectile.vz*dt;
+      projectile.vy-=9.8*dt;
+      if(spitHitCooldown.current<=0&&player.current&&projectile.y<1.35&&Math.hypot(projectile.x-player.current.position.x,projectile.z-player.current.position.z)<0.62){
+        const hitX=player.current.position.x-projectile.x;
+        const hitZ=player.current.position.z-projectile.z;
+        const hitLength=Math.max(0.001,Math.hypot(hitX,hitZ));
+        player.current.position.x=THREE.MathUtils.clamp(player.current.position.x+hitX/hitLength*0.9,-25.5,63.8);
+        player.current.position.z=THREE.MathUtils.clamp(player.current.position.z+hitZ/hitLength*0.9,-1.35,1.35);
+        spitHitCooldown.current=1.15;
+        projectile.y=0.08;
+      }
+      const mesh=spitGroups.current[projectile.id];
+      if(mesh)mesh.position.set(projectile.x,Math.max(0.08,projectile.y),projectile.z);
+      if(projectile.y<=0.08){
+        spitSplashes.current.push({id:projectile.id,x:projectile.x,z:projectile.z,age:0});
+        landedSpit=true;
+      }
+    });
+    const activeSpits=spitProjectiles.current.filter(p=>p.y>0.08&&p.age<2.2);
+    if(activeSpits.length!==spitProjectiles.current.length)landedSpit=true;
+    spitProjectiles.current=activeSpits;
+    spitSplashes.current.forEach(splash=>{
+      splash.age+=dt;
+      const mesh=splashGroups.current[splash.id];
+      if(mesh){
+        mesh.position.set(splash.x,0.045,splash.z);
+        const spread=1+Math.min(1,splash.age*3)*0.55;
+        mesh.scale.set(spread,0.22,spread);
+      }
+    });
+    const beforeSplashes=spitSplashes.current.length;
+    spitSplashes.current=spitSplashes.current.filter(s=>s.age<1.35);
+    if(landedSpit||beforeSplashes!==spitSplashes.current.length)setEnemyVersion(v=>v+1);
+
     if(phase===1){
       player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-25.5,63.8);
       if(player.current.position.x>=62.5){
@@ -1003,7 +1117,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       }
     }else{
       player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-15.1,15.1);
-      player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-17.25,20.4);
+      player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-17.25,28.4);
       // Only the front-facing staircase grants access to the upper-storey deck.
       const stairX=Math.abs(player.current.position.x);
       const stairZ=player.current.position.z;
@@ -1050,7 +1164,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       </mesh>
     ))}
 
-    {enemies.current.map((e)=>(e.alive||e.bodyState!=="alive")&&<group key={e.id} ref={node=>{enemyGroups.current[e.id]=node;}} position={[e.x,e.y,e.z]}>
+    {enemies.current.map((e)=>(e.alive||e.bodyState!=="alive")&&(phase!==1||e.id>14||initialEnemiesVisible)&&<group key={e.id} ref={node=>{enemyGroups.current[e.id]=node;}} position={[e.x,e.y,e.z]}>
       <EnemyModel kind={e.kind} headless={e.headless} dissolve={e.bodyState==="grabMelting" ? THREE.MathUtils.clamp(e.grabTimer/1.05,0,1) : 0}/>
       {e.bodyState==="wallStuck"&&<mesh position={[0,0.95,-0.25]}><circleGeometry args={[1.05,16]}/><meshStandardMaterial color="#4a0911" roughness={0.35}/></mesh>}
     </group>)}
@@ -1062,6 +1176,15 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
 
     {effects.current.map((fx)=><group key={fx.id} ref={node=>{effectGroups.current[fx.id]=node;}} position={[fx.x,fx.y,fx.z]}>
       {fx.kind==="skull"?<mesh scale={fx.size}><boxGeometry args={[0.14,0.1,0.12]}/><meshStandardMaterial color="#d4cdbc" roughness={0.65}/></mesh>:<mesh scale={fx.size}><icosahedronGeometry args={[0.11,0]}/><meshStandardMaterial color="#7e0c18" roughness={0.35}/></mesh>}
+    </group>)}
+
+    {spitProjectiles.current.map(p=><group key={p.id} ref={node=>{spitGroups.current[p.id]=node;}} position={[p.x,p.y,p.z]}>
+      <mesh scale={[0.16,0.19,0.16]} castShadow><sphereGeometry args={[1,16,12]}/><meshPhysicalMaterial color="#78d51d" emissive="#2e6508" emissiveIntensity={0.42} roughness={0.16} clearcoat={1}/></mesh>
+      <mesh position={[0,-0.12,0]} scale={[0.11,0.16,0.11]}><sphereGeometry args={[1,12,10]}/><meshStandardMaterial color="#b4ed38" roughness={0.12}/></mesh>
+    </group>)}
+    {spitSplashes.current.map(s=><group key={s.id} ref={node=>{splashGroups.current[s.id]=node;}} position={[s.x,0.045,s.z]}>
+      <mesh rotation={[-Math.PI/2,0,0]}><circleGeometry args={[0.42,20]}/><meshPhysicalMaterial color="#6fbd19" emissive="#254d08" emissiveIntensity={0.25} roughness={0.2} transparent opacity={0.88}/></mesh>
+      <mesh position={[0,0.035,0]} scale={[0.7,0.18,0.7]}><sphereGeometry args={[0.38,16,10]}/><meshStandardMaterial color="#9bd72b" roughness={0.2}/></mesh>
     </group>)}
 
     {phase===1&&pickups.current.map((p)=>!p.collected&&<group key={p.id} position={[p.x,0.16,p.z]}>
