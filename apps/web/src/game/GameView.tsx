@@ -11,8 +11,10 @@ type BodyState = "alive" | "wallFlying" | "wallStuck" | "falling" | "fallen" | "
 type EnemyState = {
   id:number; x:number; y:number; z:number; health:number; alive:boolean; kind:EnemyKind;
   knocked:number; vx:number; vy:number; vz:number; fall:number; animation:number;
-  activated:boolean; bodyState:BodyState; stickRot:number; targetZ:number; headless:boolean; grabTimer:number;
+  activated:boolean; bodyState:BodyState; stickRot:number; targetZ:number; headless:boolean; grabTimer:number; spitCooldown:number;
 };
+type SpitProjectile = {id:number;x:number;y:number;z:number;vx:number;vy:number;vz:number;age:number};
+type SpitSplash = {id:number;x:number;z:number;age:number};
 type SeveredHead = {
   id:number; kind:EnemyKind; x:number; y:number; z:number;
   vx:number; vy:number; vz:number; rotZ:number; stuck:boolean; targetZ:number;
@@ -26,7 +28,7 @@ type CombatEffect = {
 
 const makeEnemy = (id:number, x:number, z:number, kind:EnemyKind, animation:number, activated=false): EnemyState => ({
   id, x, y:0, z, health:kind==="brute"?3:2, alive:true, kind, knocked:0,
-  vx:0, vy:0, vz:0, fall:0, animation, activated, bodyState:"alive", stickRot:0, targetZ:-1.72, headless:false, grabTimer:0
+  vx:0, vy:0, vz:0, fall:0, animation, activated, bodyState:"alive", stickRot:0, targetZ:-1.72, headless:false, grabTimer:0, spitCooldown:1.1+Math.random()*1.4
 });
 
 const initialEnemies: EnemyState[] = [
@@ -408,6 +410,10 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const severedHeads=useRef<SeveredHead[]>([]);
   const bloodPools=useRef<BloodPool[]>([]);
   const effects=useRef<CombatEffect[]>([]);
+  const spitProjectiles=useRef<SpitProjectile[]>([]);
+  const spitSplashes=useRef<SpitSplash[]>([]);
+  const spitGroups=useRef<Record<number,THREE.Group|null>>({});
+  const splashGroups=useRef<Record<number,THREE.Group|null>>({});
   const nextEffectId=useRef(1);
   const nextEnemyId=useRef(100);
   const triggeredWaves=useRef(new Set<number>());
@@ -588,7 +594,9 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
         e.knocked=0.65;
         e.fall=facing.current;
         e.vx=facing.current*4.5;
-        spawnGore(e.x,1.65,e.z,22,5.5,9);
+        const headHeight=e.kind==="crawler"?1.05:1.65;
+        // Shot impact and gore originate at the creature's head, not its feet or torso.
+        spawnGore(e.x,headHeight,e.z,22,5.5,9);
         addBloodPool(e.x,e.z,1.1);
         onKill();
         onScore(100);
@@ -761,7 +769,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       spawnWave(3, 21.0, [{x:29.5,z:-0.65,kind:"brute"},{x:15.0,z:0.6,kind:"crawler"}]);
       spawnWave(4, 31.0, [{x:39.5,z:0.6,kind:"spitter"},{x:25.0,z:-0.6,kind:"crawler"}]);
       spawnWave(5, 41.0, [{x:49.5,z:-0.6,kind:"brute"},{x:36.0,z:0.65,kind:"crawler"}]);
-      spawnWave(6, 51.0, [{x:58.5,z:0.6,kind:"brute"},{x:60.0,z:-0.6,kind:"spitter"}]);
+      spawnWave(6, 51.0, [{x:58.5,z:0.6,kind:"brute"},{x:56.2,z:-0.65,kind:"spitter"},{x:60.0,z:-0.6,kind:"spitter"}]);
     }
 
     enemies.current.forEach((e)=>{
@@ -915,6 +923,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       }
       if(!e.alive||!group)return;
       e.animation+=dt*(e.kind==="crawler"?8:e.kind==="brute"?3.2:5);
+      e.spitCooldown=Math.max(0,e.spitCooldown-dt);
       if(e.knocked>0){
         e.knocked=Math.max(0,e.knocked-dt);e.x+=e.vx*dt;e.z+=e.vz*dt;
         e.vx*=Math.max(0,1-dt*3.8);e.vz*=Math.max(0,1-dt*3.8);
@@ -936,6 +945,21 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
           }
         }
         group.position.y=e.kind==="crawler"?Math.abs(Math.sin(e.animation))*0.035:Math.sin(e.animation*2)*0.025;
+      }
+      // Only the spitters that guard the mansion entrance use the green projectile attack.
+      if(phase===1&&e.kind==="spitter"&&e.x>=52.5&&e.activated&&e.spitCooldown<=0){
+        const dx=px-e.x,dz=pz-e.z,distance=Math.hypot(dx,dz);
+        if(distance>3.2&&distance<11.5){
+          const flight=0.82;
+          const startX=e.x+Math.sign(dx)*0.22,startY=1.72,startZ=e.z+0.18;
+          spitProjectiles.current.push({
+            id:nextEffectId.current++,x:startX,y:startY,z:startZ,
+            vx:(px-startX)/flight,vy:(0.08-startY+4.9*flight*flight)/flight,
+            vz:(pz-startZ)/flight,age:0
+          });
+          e.spitCooldown=2.65;
+          setEnemyVersion(v=>v+1);
+        }
       }
       e.x=THREE.MathUtils.clamp(e.x,phase===1?-25.2:-15.5,phase===1?61.5:15.5);
       e.z=THREE.MathUtils.clamp(e.z,phase===1?-1.35:-16.2,phase===1?1.35:25.5);
@@ -973,6 +997,37 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     const beforeEffects=effects.current.length;
     effects.current=effects.current.filter(fx=>fx.age<2.8);
     if(effects.current.length!==beforeEffects)setEnemyVersion(v=>v+1);
+
+    // Integrate the green glob with gravity to create a visible mouth-to-ground arc.
+    let landedSpit=false;
+    spitProjectiles.current.forEach(projectile=>{
+      projectile.age+=dt;
+      projectile.x+=projectile.vx*dt;
+      projectile.y+=projectile.vy*dt;
+      projectile.z+=projectile.vz*dt;
+      projectile.vy-=9.8*dt;
+      const mesh=spitGroups.current[projectile.id];
+      if(mesh)mesh.position.set(projectile.x,Math.max(0.08,projectile.y),projectile.z);
+      if(projectile.y<=0.08){
+        spitSplashes.current.push({id:projectile.id,x:projectile.x,z:projectile.z,age:0});
+        landedSpit=true;
+      }
+    });
+    const activeSpits=spitProjectiles.current.filter(p=>p.y>0.08&&p.age<2.2);
+    if(activeSpits.length!==spitProjectiles.current.length)landedSpit=true;
+    spitProjectiles.current=activeSpits;
+    spitSplashes.current.forEach(splash=>{
+      splash.age+=dt;
+      const mesh=splashGroups.current[splash.id];
+      if(mesh){
+        mesh.position.set(splash.x,0.045,splash.z);
+        const spread=1+Math.min(1,splash.age*3)*0.55;
+        mesh.scale.set(spread,0.22,spread);
+      }
+    });
+    const beforeSplashes=spitSplashes.current.length;
+    spitSplashes.current=spitSplashes.current.filter(s=>s.age<1.35);
+    if(landedSpit||beforeSplashes!==spitSplashes.current.length)setEnemyVersion(v=>v+1);
 
     if(phase===1){
       player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-25.5,63.8);
@@ -1050,6 +1105,15 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
 
     {effects.current.map((fx)=><group key={fx.id} ref={node=>{effectGroups.current[fx.id]=node;}} position={[fx.x,fx.y,fx.z]}>
       {fx.kind==="skull"?<mesh scale={fx.size}><boxGeometry args={[0.14,0.1,0.12]}/><meshStandardMaterial color="#d4cdbc" roughness={0.65}/></mesh>:<mesh scale={fx.size}><icosahedronGeometry args={[0.11,0]}/><meshStandardMaterial color="#7e0c18" roughness={0.35}/></mesh>}
+    </group>)}
+
+    {spitProjectiles.current.map(p=><group key={p.id} ref={node=>{spitGroups.current[p.id]=node;}} position={[p.x,p.y,p.z]}>
+      <mesh scale={[0.16,0.19,0.16]} castShadow><sphereGeometry args={[1,16,12]}/><meshPhysicalMaterial color="#78d51d" emissive="#2e6508" emissiveIntensity={0.42} roughness={0.16} clearcoat={1}/></mesh>
+      <mesh position={[0,-0.12,0]} scale={[0.11,0.16,0.11]}><sphereGeometry args={[1,12,10]}/><meshStandardMaterial color="#b4ed38" roughness={0.12}/></mesh>
+    </group>)}
+    {spitSplashes.current.map(s=><group key={s.id} ref={node=>{splashGroups.current[s.id]=node;}} position={[s.x,0.045,s.z]}>
+      <mesh rotation={[-Math.PI/2,0,0]}><circleGeometry args={[0.42,20]}/><meshPhysicalMaterial color="#6fbd19" emissive="#254d08" emissiveIntensity={0.25} roughness={0.2} transparent opacity={0.88}/></mesh>
+      <mesh position={[0,0.035,0]} scale={[0.7,0.18,0.7]}><sphereGeometry args={[0.38,16,10]}/><meshStandardMaterial color="#9bd72b" roughness={0.2}/></mesh>
     </group>)}
 
     {phase===1&&pickups.current.map((p)=>!p.collected&&<group key={p.id} position={[p.x,0.16,p.z]}>
