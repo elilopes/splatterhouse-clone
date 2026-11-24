@@ -30,7 +30,7 @@ export type RickMotion = {
   legFlex?: number;
 };
 
-type CharacterProps = {
+export type RickTaylorCharacterProps = {
   motion: RickMotion;
   equippedWeapon?: RickWeaponId | null;
   bloodIntensity?: number;
@@ -1067,7 +1067,7 @@ export function RickTaylorRig({
   motion,
   equippedWeapon = null,
   bloodIntensity = 0.85,
-}: CharacterProps) {
+}: RickTaylorCharacterProps) {
   const root = useRef<THREE.Group>(null);
   const headMount = useRef<THREE.Group>(null);
   const beltMount = useRef<THREE.Group>(null);
@@ -1508,6 +1508,21 @@ export function RickTaylorRig({
         <mesh geometry={bootGeo} material={leatherMat} castShadow receiveShadow />
       </group>
     </group>
+  );
+}
+
+/** Variante jogável do Rick HD: reutiliza o rig e recebe o mesmo estado de combate do jogo. */
+export function RickTaylorCharacter3DHDPlayer({
+  motion,
+  equippedWeapon = null,
+  bloodIntensity = 0.85,
+}: RickTaylorCharacterProps) {
+  return (
+    <RickTaylorRig
+      motion={motion}
+      equippedWeapon={equippedWeapon}
+      bloodIntensity={bloodIntensity}
+    />
   );
 }
 
