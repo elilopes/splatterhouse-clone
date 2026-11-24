@@ -709,8 +709,20 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
           if(player.current.position.y<0.1)upperDeckAccess.current=false;
         }
       }
+      // Keep the horizontal combat-facing state for weapon targeting, but orient
+      // the 3D character toward the actual travel direction in the free-roam hall.
       if(Math.abs(dx)>0.05)facing.current=dx>0?1:-1;
-      player.current.rotation.y=facing.current>0?-Math.PI/2:Math.PI/2;
+      if(phase===1){
+        player.current.rotation.y=facing.current>0?-Math.PI/2:Math.PI/2;
+      }else{
+        // The character model's forward axis is -Z:
+        // +Z (toward the camera) = front, -Z = back.
+        if(Math.abs(dz)>Math.abs(dx)){
+          player.current.rotation.y=dz>0?Math.PI:0;
+        }else if(Math.abs(dx)>0.05){
+          player.current.rotation.y=dx>0?-Math.PI/2:Math.PI/2;
+        }
+      }
     }
     if(!grounded.current){motion.current.jumpHeight=Math.max(0,motion.current.jumpHeight+jumpVelocity.current*dt);jumpVelocity.current-=16.5*dt;if(motion.current.jumpHeight<=0){motion.current.jumpHeight=0;jumpVelocity.current=0;grounded.current=true;}}
     if(pipeCombo.current){
