@@ -33,8 +33,7 @@ export default function RickTaylorCharacter({ motion }: Props) {
     const maskShade = new THREE.MeshStandardMaterial({ color: "#262326", roughness: 0.8 });
     const blood = new THREE.MeshStandardMaterial({ color: "#4c1119", roughness: 0.42 });
     const boot = new THREE.MeshStandardMaterial({ color: "#171518", roughness: 0.82 });
-    const metal = new THREE.MeshStandardMaterial({ color: "#a6a19a", metalness: 0.72, roughness: 0.28 });
-    return { skin, skinLight, denim, denimLight, mask, maskShade, blood, boot, metal };
+    return { skin, skinLight, denim, denimLight, mask, maskShade, blood, boot };
   }, []);
   const sphere = useMemo(() => new THREE.SphereGeometry(1, 32, 24), []);
   const capsule = useMemo(() => new THREE.CapsuleGeometry(0.12, 0.42, 8, 20), []);
@@ -72,10 +71,10 @@ export default function RickTaylorCharacter({ motion }: Props) {
         {ellipsoid(sphere, materials.boot, [0,-0.82,-0.09], [0.18,0.13,0.29])}
       </group>
       <group ref={rightLeg} position={[0.18,0.91,0]}>
-        {ellipsoid(sphere, materials.denim, [0,-0.24,0], [0.19,0.39,0.22])}
-        {ellipsoid(sphere, materials.denimLight, [0,-0.43,-0.005], [0.16,0.12,0.19])}
-        <mesh geometry={capsule} material={materials.denim} position={[0,-0.69,0]} rotation={[0,0,Math.PI]} castShadow />
-        {ellipsoid(sphere, materials.boot, [0,-0.99,-0.09], [0.18,0.13,0.29])}
+        {ellipsoid(sphere, materials.denim, [0,-0.20,0], [0.19,0.36,0.22])}
+        {ellipsoid(sphere, materials.denimLight, [0,-0.39,-0.005], [0.16,0.12,0.19])}
+        <mesh geometry={capsule} material={materials.denim} position={[0,-0.59,0]} rotation={[0,0,Math.PI]} castShadow />
+        {ellipsoid(sphere, materials.boot, [0,-0.82,-0.09], [0.18,0.13,0.29])}
       </group>
       {/* Broad, tapered torso; large overlapping volumes blend visually with smooth shading */}
       <group ref={torso} position={[0,1.05,0]}>
