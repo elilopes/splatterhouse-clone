@@ -2,14 +2,17 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
+export type RickWeaponId = "pipe" | "machete" | "shotgun";
+
 export type RickMotion = {
   moving: boolean;
   attackTime: number;
   grabTime: number;
   jumpHeight: number;
+  weapon: RickWeaponId | null;
 };
 
-type Props = { motion: RickMotion };
+type Props = { motion: RickMotion; equippedWeapon?: RickWeaponId | null };
 
 function makeFabricTexture(base: string, stitch: string, seed: number) {
   const canvas = document.createElement("canvas");
@@ -122,7 +125,7 @@ function Capsule({
  * Anatomical masses overlap deliberately to create a continuous silhouette;
  * fine material maps, layered anatomy and stitched clothing add close-up detail.
  */
-export default function RickTaylorCharacter({ motion }: Props) {
+export default function RickTaylorCharacter({ motion, equippedWeapon = null }: Props) {
   const root = useRef<THREE.Group>(null);
   const torso = useRef<THREE.Group>(null);
   const head = useRef<THREE.Group>(null);
@@ -180,6 +183,7 @@ export default function RickTaylorCharacter({ motion }: Props) {
     const gait = motion.moving ? Math.sin(t * 10) : 0;
     const punch = motion.attackTime > 0
       ? Math.sin((1 - motion.attackTime / 0.34) * Math.PI) : 0;
+    const activeWeapon = equippedWeapon ?? motion.weapon;
     const grab = motion.grabTime > 0
       ? Math.sin((1 - motion.grabTime / 0.46) * Math.PI) : 0;
 
@@ -317,6 +321,19 @@ export default function RickTaylorCharacter({ motion }: Props) {
           ))}
           {oval(a.sphere, a.skin, [0.19, -1.01, -0.04], [0.055, 0.075, 0.06], [0, 0, 0.55])}
           {oval(a.sphere, a.blood, [0.11, 0.08, -0.17], [0.08, 0.035, 0.02])}
+          {activeWeapon === "pipe" && <group position={[0.12, -1.03, -0.18]} rotation={[0.18, 0, 0.08]}>
+            <mesh rotation={[Math.PI / 2, 0, 0]} castShadow><cylinderGeometry args={[0.055, 0.055, 1.22, 16]} /><meshStandardMaterial color="#929895" metalness={0.82} roughness={0.24} /></mesh>
+            <mesh position={[0, 0, 0.36]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.067, 0.067, 0.28, 12]} /><meshStandardMaterial color="#503222" roughness={0.86} /></mesh>
+          </group>}
+          {activeWeapon === "machete" && <group position={[0.12, -1.03, -0.18]} rotation={[0.12, 0, 0.05]}>
+            <mesh position={[0, 0, -0.31]} castShadow><boxGeometry args={[0.055, 0.12, 0.88]} /><meshStandardMaterial color="#d1d2c8" metalness={0.86} roughness={0.2} /></mesh>
+            <mesh position={[0, 0, 0.2]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.06, 0.06, 0.3, 12]} /><meshStandardMaterial color="#503020" roughness={0.86} /></mesh>
+          </group>}
+          {activeWeapon === "shotgun" && <group position={[0.12, -0.92, -0.18]} rotation={[0.15, 0, 0]}>
+            <mesh position={[0, 0, -0.25]} castShadow><boxGeometry args={[0.14, 0.17, 0.72]} /><meshStandardMaterial color="#292326" metalness={0.3} roughness={0.48} /></mesh>
+            <mesh position={[0, 0.015, -0.73]} castShadow><cylinderGeometry args={[0.045, 0.045, 0.78, 16]} /><meshStandardMaterial color="#858b89" metalness={0.82} roughness={0.23} /></mesh>
+            <mesh position={[0, -0.12, 0.12]} castShadow><boxGeometry args={[0.095, 0.25, 0.16]} /><meshStandardMaterial color="#4a2c20" roughness={0.84} /></mesh>
+          </group>}
         </group>
 
         {/* Neck and trapezius transition */}
