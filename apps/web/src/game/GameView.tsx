@@ -390,8 +390,16 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
       if(enemy.health<=0)killEnemy(enemy);
     };
     const pickupWeapon=()=>{
-      const candidate=pickups.find(p=>!p.collected);
-      if(!candidate||Vector3.Distance(player.position,candidate.root.position)>=1.35)return;
+      let candidate: typeof pickups[number] | undefined;
+      let nearest=1.75;
+      for(const pickup of pickups){
+        if(pickup.collected)continue;
+        const dx=player.position.x-pickup.root.position.x;
+        const dz=player.position.z-pickup.root.position.z;
+        const distance=Math.hypot(dx,dz);
+        if(distance<nearest){nearest=distance;candidate=pickup;}
+      }
+      if(!candidate)return;
       candidate.collected=true;candidate.root.setEnabled(false);equipped=candidate.id;makeHeldWeapon(candidate.id);
     };
     const attack=()=>{
@@ -408,11 +416,15 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
       damageEnemy(target,equipped??"hands");
     };
     const grabAndThrow=()=>{
-      if(grabCooldown>0)return;grabCooldown=0.85;
-      const target=nearestEnemy(1.65);if(!target)return;
-      target.velocity.x=facing*8;target.velocity.z=(target.root.position.z-player.position.z)*2;
-      target.root.position.x+=facing*0.35;
-      damageEnemy(target,"throw");
+      if(grabCooldown>0||pausedRef.current)return;
+      grabCooldown=1.15;
+      const target=nearestEnemy(1.8);
+      if(!target)return;
+      rick.playGrab();
+      target.knockedDown=1.25;
+      target.knockDirection=-facing;
+      target.velocity.set(-facing*5.8,(target.root.position.z-player.position.z)*1.8,0);
+      target.root.rotation.z=0;
     };
     const jump=()=>{if(!grounded||pausedRef.current)return;grounded=false;jumpVelocity=6.2;};
     actionRefs.current={punch:attack,grab:grabAndThrow,jump};
@@ -445,9 +457,23 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
         if(!grounded){player.position.y+=jumpVelocity*dt;jumpVelocity-=16.5*dt;if(player.position.y<=0){player.position.y=0;jumpVelocity=0;grounded=true;}}
         rick.update(dt,move.lengthSquared()>0);
         pickups.forEach(p=>{if(!p.collected){p.root.rotation.y+=dt*0.65;p.root.position.y=0.15+Math.sin(now*0.002+p.root.position.x)*0.06;}});
+        // Mobile users have no physical E key: collect automatically on close approach.
+        const nearbyPickup=pickups.some(p=>!p.collected&&Math.hypot(player.position.x-p.root.position.x,player.position.z-p.root.position.z)<1.45);
+        if(nearbyPickup)pickupWeapon();
         for(const enemy of enemies){
           if(!enemy.alive)continue;
           enemy.attackCooldown=Math.max(0,enemy.attackCooldown-dt);
+          if(enemy.knockedDown>0){
+            enemy.knockedDown=Math.max(0,enemy.knockedDown-dt);
+            enemy.root.position.x+=enemy.velocity.x*dt;
+            enemy.root.position.z+=enemy.velocity.y*dt;
+            enemy.velocity.scaleInPlace(Math.max(0,1-dt*3.8));
+            const fall=1-enemy.knockedDown/1.25;
+            enemy.root.rotation.z=enemy.knockDirection*Math.min(1,fall*1.8)*1.48;
+            enemy.root.position.y=Math.max(0.035,Math.sin(fall*Math.PI)*0.16);
+            if(enemy.knockedDown<=0)killEnemy(enemy);
+            continue;
+          }
           enemy.animationTime+=dt*(enemy.kind==="crawler"?8:enemy.kind==="brute"?3.2:5);
           const gait=Math.sin(enemy.animationTime);
           enemy.animatedParts.forEach((part,index)=>{
