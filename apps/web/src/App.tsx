@@ -68,7 +68,7 @@ export default function App() {
               {currentPhase===1?<div className="stage-list"><span className="active">01 · Muro gosmento</span><span>02 · Bosque de árvores</span><span>03 · Frente da mansão</span></div>:<div className="stage-list"><span className="active">01 · Salão principal</span><span>02 · Próximas salas (futuro)</span></div>}
               <div className="stat"><span>Checkpoint</span><b>{progress.checkpoint}</b></div>
               <div className="stat"><span>Eliminações</span><b>{progress.totalKills}</b></div>
-              <p className="hint">Mover: WASD/setas ou joystick virtual no celular · Atacar: J · Agarrar/arremessar: K · Recolher arma: E</p>
+              <p className="hint">Mover: WASD/setas ou joystick virtual · Soco/ataque: J · Agarrão: K · Pulo: Espaço · Recolher arma: E. Use também os botões na tela com mouse ou toque.</p>
               <p className="hint">Sequência de armas: mãos → cano → facão → escopeta. Aproxime-se de cada arma e pressione E. A entrada da mansão inicia automaticamente a segunda fase.</p>
             </aside>
           </section>
