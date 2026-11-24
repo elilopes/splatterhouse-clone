@@ -918,10 +918,19 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     }else{
       player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-15.1,15.1);
       player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-15.6,13.4);
+      // Walkable height follows the central staircase and its upper left/right galleries.
+      const stairX=Math.abs(player.current.position.x);
+      const stairZ=player.current.position.z;
+      const onStair=stairX<=2.95&&stairZ>=-2.25&&stairZ<=5.2;
+      const onUpperGallery=stairZ>=-4.35&&stairZ<=-1.55&&stairX<=12.0;
+      if(onUpperGallery)player.current.position.y=3.5;
+      else if(onStair)player.current.position.y=THREE.MathUtils.clamp((5.2-stairZ)/7.45,0,1)*3.5;
+      else player.current.position.y=0;
     }
 
     const targetX=player.current.position.x;
     const targetZ=player.current.position.z;
+    const playerHeight=player.current.position.y;
     if(phase===1){
       camera.position.x=THREE.MathUtils.damp(camera.position.x,targetX,3.8,dt);
       camera.position.z=18;
@@ -929,9 +938,9 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       camera.lookAt(camera.position.x,3.2,0);
     }else{
       camera.position.x=THREE.MathUtils.damp(camera.position.x,targetX,4.2,dt);
-      camera.position.y=THREE.MathUtils.damp(camera.position.y,8.4,3.2,dt);
+      camera.position.y=THREE.MathUtils.damp(camera.position.y,8.4+playerHeight,3.2,dt);
       camera.position.z=THREE.MathUtils.damp(camera.position.z,targetZ+6.8,4.2,dt);
-      camera.lookAt(targetX,1.7,targetZ-2.6);
+      camera.lookAt(targetX,1.7+playerHeight,targetZ-2.6);
     }
     if(size.width>0){const aspect=size.width/Math.max(1,size.height);const halfH=phase===1?5.4:7.4;const ortho=camera as THREE.OrthographicCamera;ortho.zoom=1;ortho.left=-halfH*aspect;ortho.right=halfH*aspect;ortho.top=halfH;ortho.bottom=-halfH;ortho.updateProjectionMatrix();}
   });
