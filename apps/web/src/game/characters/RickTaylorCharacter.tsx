@@ -434,10 +434,8 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
         {ellipsoid(sphere, materials.sweat, [-0.14,0.29,-0.226], [0.011,0.027,0.009])}
         {ellipsoid(sphere, materials.sweat, [0.04,-0.02,-0.235], [0.014,0.03,0.01])}
         <group ref={leftArm} position={[-0.47,0.61,0]}>
-          {ellipsoid(sphere, materials.skinLight, [0,0,0], [0.245,0.25,0.235])}
-          {ellipsoid(sphere, materials.skin, [-0.025,-0.20,0.01], [0.19,0.245,0.18],)}
-          <mesh geometry={capsule} material={materials.skin} position={[-0.035,-0.29,0]} rotation={[0,0,0.08]} castShadow receiveShadow />
-          {ellipsoid(sphere, materials.skinLight, [-0.06,-0.52,0], [0.15,0.16,0.15])}
+          <mesh geometry={capsule} material={materials.skin} position={[-0.025,-0.22,0.01]} rotation={[0,0,0.04]} scale={[1.72,1.25,1.68]} castShadow receiveShadow />
+
           {ellipsoid(sphere, materials.blood, [-0.12,0.06,-0.17], [0.11,0.045,0.025])}
           {ellipsoid(sphere, materials.blood, [-0.08,-0.12,-0.166], [0.045,0.07,0.018])}
           {ellipsoid(sphere, materials.sweat, [-0.12,-0.31,-0.145], [0.014,0.04,0.012])}
@@ -448,10 +446,8 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
           </group>
         </group>
         <group ref={rightArm} position={[0.47,0.61,0]}>
-          {ellipsoid(sphere, materials.skinLight, [0,0,0], [0.245,0.25,0.235])}
-          {ellipsoid(sphere, materials.skin, [0.025,-0.20,0.01], [0.19,0.245,0.18])}
-          <mesh geometry={capsule} material={materials.skin} position={[0.035,-0.29,0]} rotation={[0,0,-0.08]} castShadow receiveShadow />
-          {ellipsoid(sphere, materials.skinLight, [0.06,-0.52,0], [0.16,0.17,0.16])}
+          <mesh geometry={capsule} material={materials.skin} position={[0.025,-0.22,0.01]} rotation={[0,0,-0.04]} scale={[1.72,1.25,1.68]} castShadow receiveShadow />
+
           {ellipsoid(sphere, materials.skin, [0.04,-0.57,0.09], [0.095,0.12,0.075])}
           {ellipsoid(sphere, materials.blood, [0.11,0.08,-0.17], [0.08,0.035,0.02])}
           {ellipsoid(sphere, materials.blood, [0.15,-0.01,-0.168], [0.035,0.06,0.016])}
