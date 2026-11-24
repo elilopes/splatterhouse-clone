@@ -479,24 +479,10 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       return;
     }
 
-    const e=nearest(equipped==="pipe"||equipped==="machete"?2.35:1.65);
+    const e=nearest(equipped==="machete"?2.35:1.65);
     if(!e)return;
 
-    if(equipped==="pipe"){
-      if((e.x-px)*facing.current<-0.35)return;
-      e.alive=false;
-      e.bodyState="wallFlying";
-      e.targetZ=targetWallZ(e.x);
-      e.vx=facing.current*2.2;
-      e.vy=4.4;
-      e.vz=-16.5;
-      e.stickRot=(Math.random()-0.5)*0.45;
-      spawnGore(e.x,1.2,e.z,14,4.8);
-      addBloodPool(e.x,e.z,0.75);
-      onKill();
-      onScore(100);
-      setEnemyVersion(v=>v+1);
-    }else if(equipped==="machete"){
+    if(equipped==="machete"){
       if((e.x-px)*facing.current<-0.35)return;
       e.alive=false;
       e.headless=true;
