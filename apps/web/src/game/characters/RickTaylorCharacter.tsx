@@ -4,7 +4,7 @@ import * as THREE from "three";
 
 export type RickWeaponId = "pipe" | "machete" | "shotgun";
 
-export type RickPipeAttackStyle = "bat" | "overhead";
+export type RickPipeAttackStyle = "bat" | "overhead" | "macheteHead" | "macheteArm";
 
 export type RickMotion = {
   moving: boolean;
@@ -1332,33 +1332,70 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
       rShoulderX = 0.15 + gait * 0.22;
       rElbowX = 0.48;
       if (motion.attackTime > 0) {
-        if (p < 0.34) {
-          const w = p / 0.34;
-          const ease = w * w * (3 - 2 * w);
-          torsoRotY = THREE.MathUtils.lerp(0, -0.42, ease);
-          torsoRotX = THREE.MathUtils.lerp(0, -0.12, ease);
-          rShoulderX = THREE.MathUtils.lerp(0.15, 2.15, ease);
-          rShoulderZ = THREE.MathUtils.lerp(-0.08, -0.35, ease);
-          rElbowX = THREE.MathUtils.lerp(0.48, 0.72, ease);
-          lShoulderX = 0.55;
-          lElbowX = 0.95;
-        } else if (p < 0.62) {
-          const s = (p - 0.34) / 0.28;
-          const snap = 1 - Math.pow(1 - s, 2.2);
-          torsoRotY = THREE.MathUtils.lerp(-0.42, 0.5, snap);
-          torsoRotX = THREE.MathUtils.lerp(-0.12, 0.24, snap);
-          rShoulderX = THREE.MathUtils.lerp(2.15, -0.2, snap);
-          rShoulderZ = THREE.MathUtils.lerp(-0.35, 0.28, snap);
-          rElbowX = THREE.MathUtils.lerp(0.72, 0.16, snap);
-          lShoulderX = -0.2;
-          lElbowX = 0.85;
+        if (motion.attackStyle === "macheteArm") {
+          // Low, cross-body horizontal cut: Rick braces with his left arm,
+          // then drives the blade outward to sever the monster's arm.
+          if (p < 0.28) {
+            const wind = smoothstep(0,0.28,p);
+            torsoRotY = THREE.MathUtils.lerp(0,0.32,wind);
+            torsoRotX = THREE.MathUtils.lerp(0.02,-0.08,wind);
+            rShoulderX = THREE.MathUtils.lerp(0.15,0.92,wind);
+            rShoulderZ = THREE.MathUtils.lerp(-0.08,-0.72,wind);
+            rElbowX = THREE.MathUtils.lerp(0.48,1.05,wind);
+            lShoulderX = 0.82;
+            lShoulderZ = 0.18;
+            lElbowX = 1.02;
+          } else if (p < 0.62) {
+            const cut = smoothstep(0.28,0.62,p);
+            const snap = 1-Math.pow(1-cut,2.5);
+            torsoRotY = THREE.MathUtils.lerp(0.32,-0.62,snap);
+            torsoRotX = THREE.MathUtils.lerp(-0.08,0.22,snap);
+            rShoulderX = THREE.MathUtils.lerp(0.92,-0.72,snap);
+            rShoulderZ = THREE.MathUtils.lerp(-0.72,0.42,snap);
+            rElbowX = THREE.MathUtils.lerp(1.05,0.12,snap);
+            lShoulderX = THREE.MathUtils.lerp(0.82,-0.12,snap);
+            lShoulderZ = 0.12;
+            lElbowX = 0.82;
+          } else {
+            const recover = smoothstep(0.62,1,p);
+            torsoRotY = THREE.MathUtils.lerp(-0.62,0,recover);
+            torsoRotX = THREE.MathUtils.lerp(0.22,0.04,recover);
+            rShoulderX = THREE.MathUtils.lerp(-0.72,0.15,recover);
+            rShoulderZ = THREE.MathUtils.lerp(0.42,-0.08,recover);
+            rElbowX = THREE.MathUtils.lerp(0.12,0.48,recover);
+            lShoulderX = THREE.MathUtils.lerp(-0.12,0.28,recover);
+            lElbowX = THREE.MathUtils.lerp(0.82,0.72,recover);
+          }
         } else {
-          const r = (p - 0.62) / 0.38;
-          torsoRotY = THREE.MathUtils.lerp(0.5, 0, r);
-          torsoRotX = THREE.MathUtils.lerp(0.24, 0.04, r);
-          rShoulderX = THREE.MathUtils.lerp(-0.2, 0.15, r);
-          rShoulderZ = THREE.MathUtils.lerp(0.28, -0.08, r);
-          rElbowX = THREE.MathUtils.lerp(0.16, 0.48, r);
+          // High diagonal decapitation slash, with a stronger shoulder wind-up.
+          if (p < 0.34) {
+            const w = p / 0.34;
+            const ease = w * w * (3 - 2 * w);
+            torsoRotY = THREE.MathUtils.lerp(0, -0.42, ease);
+            torsoRotX = THREE.MathUtils.lerp(0, -0.12, ease);
+            rShoulderX = THREE.MathUtils.lerp(0.15, 2.15, ease);
+            rShoulderZ = THREE.MathUtils.lerp(-0.08, -0.35, ease);
+            rElbowX = THREE.MathUtils.lerp(0.48, 0.72, ease);
+            lShoulderX = 0.55;
+            lElbowX = 0.95;
+          } else if (p < 0.62) {
+            const s = (p - 0.34) / 0.28;
+            const snap = 1 - Math.pow(1 - s, 2.2);
+            torsoRotY = THREE.MathUtils.lerp(-0.42, 0.5, snap);
+            torsoRotX = THREE.MathUtils.lerp(-0.12, 0.24, snap);
+            rShoulderX = THREE.MathUtils.lerp(2.15, -0.2, snap);
+            rShoulderZ = THREE.MathUtils.lerp(-0.35, 0.28, snap);
+            rElbowX = THREE.MathUtils.lerp(0.72, 0.16, snap);
+            lShoulderX = -0.2;
+            lElbowX = 0.85;
+          } else {
+            const r = (p - 0.62) / 0.38;
+            torsoRotY = THREE.MathUtils.lerp(0.5, 0, r);
+            torsoRotX = THREE.MathUtils.lerp(0.24, 0.04, r);
+            rShoulderX = THREE.MathUtils.lerp(-0.2, 0.15, r);
+            rShoulderZ = THREE.MathUtils.lerp(0.28, -0.08, r);
+            rElbowX = THREE.MathUtils.lerp(0.16, 0.48, r);
+          }
         }
       }
     } else if (motion.attackTime > 0) {
