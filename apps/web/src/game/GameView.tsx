@@ -831,8 +831,10 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       }
     }else{
       motion.current.attackTime=Math.max(0,motion.current.attackTime-dt);
-      motion.current.attackStyle=null;
-      motion.current.attackProgress=0;
+      if(motion.current.attackTime<=0){
+        motion.current.attackStyle=null;
+        motion.current.attackProgress=0;
+      }
     }
     motion.current.grabTime=Math.max(0,motion.current.grabTime-dt);
     const px=player.current.position.x, pz=player.current.position.z;
