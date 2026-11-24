@@ -1,10 +1,23 @@
 import * as THREE from "three";
+import { MeshStandardNodeMaterial } from "three/webgpu";
+import { attribute, float, normalMap as normalMapNode, texture, uv, vec2 } from "three/tsl";
 
 export type ProceduralPBRMaps = {
   normalMap: THREE.DataTexture;
   aoMap: THREE.DataTexture;
   roughnessMap: THREE.DataTexture;
   dispose: () => void;
+};
+
+export type WebGPUSurfaceMaterialOptions = {
+  baseColorHex: string;
+  maps: ProceduralPBRMaps;
+  albedoMap?: THREE.Texture;
+  normalScale?: number;
+  aoIntensity?: number;
+  roughnessMultiplier?: number;
+  metalness?: number;
+  useSecondaryUVForAO?: boolean;
 };
 
 function hash2D(x: number, y: number, seed: number): number {
@@ -153,7 +166,6 @@ export function createProceduralSurfaceMaps(
           1
         );
 
-        // Sangue preenche os poros e cria leve filme espesso na superfície
         const bloodHeight = THREE.MathUtils.clamp(
           0.62 + fbm(u * 22, v * 22, 163, 2) * 0.14,
           0,
@@ -166,7 +178,6 @@ export function createProceduralSurfaceMaps(
           0.25,
           1.0
         );
-        // Sangue escuro escurece ligeiramente as bordas/fendas
         ao = THREE.MathUtils.clamp(baseAO * (1 - bloodMask * 0.22), 0.2, 1.0);
 
         const drySkinRough = THREE.MathUtils.clamp(
@@ -175,11 +186,9 @@ export function createProceduralSurfaceMaps(
           0.92
         );
         const wetSkinRough = THREE.MathUtils.lerp(drySkinRough, 0.32, sweatMask);
-        // Sangue fresco fica bem mais liso/brilhante (~0.14 - 0.24)
         const bloodRough = 0.16 + fbm(u * 18, v * 18, 199, 2) * 0.08;
         roughness = THREE.MathUtils.lerp(wetSkinRough, bloodRough, bloodMask);
       } else {
-        // Sarja diagonal do jeans
         const twillPhase = ((x + y) % 6) / 6;
         const twillRidge = Math.sin(twillPhase * Math.PI * 2) * 0.5 + 0.5;
         const warpWeave = fbm(u * 90, v * 90, 41, 2);
@@ -209,7 +218,6 @@ export function createProceduralSurfaceMaps(
           0.72,
           0.98
         );
-        // No jeans, o sangue absorve um pouco mais que na pele, mas ainda reduz a rugosidade
         const bloodDenimRough = 0.34 + fbm(u * 16, v * 16, 211, 2) * 0.1;
         roughness = THREE.MathUtils.lerp(baseRough, bloodDenimRough, bloodMask);
       }
@@ -255,4 +263,48 @@ export function createProceduralSurfaceMaps(
       roughnessMap.dispose();
     },
   };
+}
+
+/**
+ * Cria um MeshStandardNodeMaterial configurado em TSL para WebGPURenderer,
+ * conectando normalMap, aoMap e roughnessMap sem usar bumpMap.
+ */
+export function createWebGPUSurfaceNodeMaterial(
+  options: WebGPUSurfaceMaterialOptions
+): MeshStandardNodeMaterial {
+  const {
+    baseColorHex,
+    maps,
+    albedoMap,
+    normalScale = 0.9,
+    aoIntensity = 1.15,
+    roughnessMultiplier = 1.0,
+    metalness = 0.0,
+    useSecondaryUVForAO = true,
+  } = options;
+
+  const material = new MeshStandardNodeMaterial();
+  const baseColor = new THREE.Color(baseColorHex);
+  const primaryUV = uv();
+  const aoUV = useSecondaryUVForAO ? uv(attribute("uv2")) : primaryUV;
+
+  material.colorNode = albedoMap
+    ? texture(albedoMap, primaryUV).mul(baseColor)
+    : float(1.0).mul(baseColor);
+
+  material.normalNode = normalMapNode(
+    texture(maps.normalMap, primaryUV),
+    vec2(normalScale, normalScale)
+  );
+
+  material.aoNode = texture(maps.aoMap, aoUV).r.mul(float(aoIntensity));
+  material.roughnessNode = texture(maps.roughnessMap, primaryUV).r.mul(
+    float(roughnessMultiplier)
+  );
+
+  material.metalness = metalness;
+  material.vertexColors = true;
+  material.needsUpdate = true;
+
+  return material;
 }
