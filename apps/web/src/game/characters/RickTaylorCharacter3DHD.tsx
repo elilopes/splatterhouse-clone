@@ -1566,7 +1566,7 @@ export function RickTaylorRig({
 export function RickTaylorCharacter3DHDPlayer({
   motion,
   equippedWeapon = null,
-  bloodIntensity = 0.85,
+  bloodIntensity = 1.0,
 }: RickTaylorCharacterProps) {
   return (
     <RickTaylorRig
