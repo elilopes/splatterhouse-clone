@@ -33,14 +33,14 @@ Do not put service-account JSON, Admin SDK credentials, or service-role keys in 
 The first prototype keeps guest progress locally. Firebase anonymous / Google authentication and Firestore persistence are enabled when the public web-app configuration is supplied. Linking a Google account from an anonymous session preserves that Firebase UID.
 
 ## Current prototype
-- Babylon.js 3D training arena with Rick represented by a complete low-detail procedural humanoid (head, Terror Mask, torso, arms, hands, legs and boots).
+- Three.js + React Three Fiber 3D game renderer. Rick is a smooth procedural character with a broad, tapered torso, larger Terror Mask, muscular limbs and blue denim trousers.
 - Keyboard movement (WASD / arrows), procedural walk cycle, short punch animation (J) and pause (Esc).
 - Mobile touch controls.
 - Local guest save: current stage, checkpoint, score, kills, deaths and unlocked stages.
 - Firebase adapter for anonymous / Google sign-in and Firestore save/load.
 - Fastify API starter with health endpoint.
 
-The procedural Rick is a low-cost visual prototype: simplified chest/abdomen, restrained blood marks, low-segment geometry and a simple mask. It is designed to be replaced by a higher-quality rigged GLB while retaining the same gameplay interface. This is a technical foundation, not a recreation containing original copyrighted game assets. Add only assets you own or are licensed to use.
+The procedural Rick is built from smooth, overlapping Three.js surfaces and is designed to be replaced by a high-quality rigged GLB while retaining the same gameplay interface. This is a technical foundation, not a recreation containing original copyrighted game assets. Add only assets you own or are licensed to use.
 
 ## Protótipo jogável — build 0.3.0
 
@@ -56,7 +56,7 @@ Os cenários e a versão de baixa qualidade de Rick são construídos procedural
 
 ## Inimigos procedurais
 
-A versão inicial utiliza três arquétipos 3D montados diretamente no Babylon.js, sem depender de modelos externos:
+A versão inicial utiliza três arquétipos 3D montados diretamente no React Three Fiber, sem depender de modelos externos:
 
 - **Rastejante:** corpo baixo e alongado, costelas expostas, garras e deslocamento mais rápido.
 - **Brutamontes:** maior volume corporal, corcova, espinhos dorsais e três pontos de resistência.

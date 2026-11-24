@@ -11,20 +11,21 @@
     "android:sync": "cap sync android"
   },
   "dependencies": {
-    "@babylonjs/core": "^8.20.0",
-    "@babylonjs/loaders": "^8.20.0",
     "@capacitor/android": "^7.4.3",
     "@capacitor/core": "^7.4.3",
     "@capacitor/cli": "^7.4.3",
     "firebase": "^12.5.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "three": "^0.180.0",
+    "@react-three/fiber": "^9.3.0"
   },
   "devDependencies": {
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.2",
     "typescript": "~5.9.2",
-    "vite": "^7.1.7"
+    "vite": "^7.1.7",
+    "@types/three": "^0.180.0"
   }
 }
