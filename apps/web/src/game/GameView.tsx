@@ -551,20 +551,18 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   };
 
   const doPickup=()=>{
-    if(!player.current)return;
+    if(phase!==1||!player.current)return;
+    // Weapons are collected in the intended progression: pipe, machete, shotgun.
     const next=pickups.current.find(p=>!p.collected);
-    const candidates=next?[next]:[];
-    let best:PickupState|undefined;
-    let distance=1.75;
-    for(const p of candidates){
-      const d=Math.hypot(p.x-player.current.position.x,p.z-player.current.position.z);
-      if(d<distance){best=p;distance=d;}
-    }
-    if(best){
-      best.collected=true;
-      motion.current.weapon=best.id;
-      setEquipped(best.id);
-    }
+    if(!next)return;
+    const dx=next.x-player.current.position.x;
+    const dz=next.z-player.current.position.z;
+    const distance=Math.hypot(dx,dz);
+    if(distance>2.65)return;
+    next.collected=true;
+    motion.current.weapon=next.id;
+    setEquipped(next.id);
+    setEnemyVersion(v=>v+1);
   };
 
   const applyPipeImpact=(style:PipeAttackStyle)=>{
@@ -1203,9 +1201,9 @@ export default function GameView({onScore,onKill,paused,onStageChange}:Props) {
   const controls=useRef<WorldControls>({horizontal:0,depth:0,attack:false,grab:false,jump:false,pickup:false});
   const updateJoystick=(event:ReactPointerEvent<HTMLDivElement>)=>{const el=joystickRef.current;if(!el)return;const r=el.getBoundingClientRect();const dx=event.clientX-(r.left+r.width/2),dy=event.clientY-(r.top+r.height/2),radius=r.width*0.34,d=Math.hypot(dx,dy),scale=d>radius?radius/d:1;const x=dx*scale,y=dy*scale;joystickInput.current.x=x/radius;joystickInput.current.y=y/radius;controls.current.horizontal=x/radius;controls.current.depth=y/radius;setKnob({x,y});};
   const releaseJoystick=(event:ReactPointerEvent<HTMLDivElement>)=>{if(joystickInput.current.pointerId!==event.pointerId)return;joystickInput.current={x:0,y:0,pointerId:-1};controls.current.horizontal=0;controls.current.depth=0;setKnob({x:0,y:0});if(joystickRef.current?.hasPointerCapture(event.pointerId))joystickRef.current.releasePointerCapture(event.pointerId);};
-  const setAction=(key:"attack"|"grab"|"jump",value:boolean)=>{controls.current[key]=value;};
-  const press=(key:"attack"|"grab"|"jump")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,true);};
-  const release=(key:"attack"|"grab"|"jump")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,false);};
+  const setAction=(key:"attack"|"grab"|"jump"|"pickup",value:boolean)=>{controls.current[key]=value;};
+  const press=(key:"attack"|"grab"|"jump"|"pickup")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,true);};
+  const release=(key:"attack"|"grab"|"jump"|"pickup")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,false);};
   return <div className="game-viewport">
     <Canvas className="game-canvas" shadows dpr={[1,1.7]} orthographic camera={{position:[-24,4.6,18],zoom:1,near:0.1,far:100}}>
       <World onScore={onScore} onKill={onKill} paused={paused} onStageChange={onStageChange} controls={controls}/>
@@ -1214,6 +1212,7 @@ export default function GameView({onScore,onKill,paused,onStageChange}:Props) {
       <button type="button" className="action-button action-punch" aria-label="Soco ou ataque" onPointerDown={press("attack")} onPointerUp={release("attack")} onPointerCancel={release("attack")} onPointerLeave={release("attack")}>SOCO</button>
       <button type="button" className="action-button action-grab" aria-label="Agarrar e arremessar" onPointerDown={press("grab")} onPointerUp={release("grab")} onPointerCancel={release("grab")} onPointerLeave={release("grab")}>AGARRÃO</button>
       <button type="button" className="action-button action-jump" aria-label="Pular" onPointerDown={press("jump")} onPointerUp={release("jump")} onPointerCancel={release("jump")} onPointerLeave={release("jump")}>PULO</button>
+      <button type="button" className="action-button action-pickup" aria-label="Pegar próxima arma" onPointerDown={press("pickup")} onPointerUp={release("pickup")} onPointerCancel={release("pickup")} onPointerLeave={release("pickup")}>PEGAR</button>
     </div>
     <div ref={joystickRef} className="virtual-joystick" role="application" aria-label="Joystick virtual para movimentar Rick"
       onPointerDown={e=>{e.preventDefault();joystickInput.current.pointerId=e.pointerId;e.currentTarget.setPointerCapture(e.pointerId);updateJoystick(e);}}
