@@ -1,581 +1,214 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import {
-  Camera, Color3, Engine, HemisphericLight, Mesh, MeshBuilder,
-  Scene, StandardMaterial, Vector3, FreeCamera, DirectionalLight, TransformNode
-} from "@babylonjs/core";
-import { RickProcedural } from "./characters/RickProcedural";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import * as THREE from "three";
+import RickTaylorCharacter, { type RickMotion } from "./characters/RickTaylorCharacter";
 
-type Props = {
-  onScore: (points: number) => void;
-  onKill: () => void;
-  paused: boolean;
-  onStageChange: (stage: 1 | 2) => void;
-};
-
+type Props = { onScore:(points:number)=>void; onKill:()=>void; paused:boolean; onStageChange:(stage:1|2)=>void };
 type WeaponId = "pipe" | "machete" | "shotgun";
 type EnemyKind = "crawler" | "brute" | "spitter";
-type Enemy = {
-  root: TransformNode;
-  body: Mesh;
-  head: Mesh;
-  health: number;
-  alive: boolean;
-  velocity: Vector3;
-  attackCooldown: number;
-  crushed: boolean;
-  kind: EnemyKind;
-  animatedParts: Mesh[];
-  animationTime: number;
-  knockedDown: number;
-  knockDirection: number;
+type EnemyState = { x:number; z:number; health:number; alive:boolean; kind:EnemyKind; knocked:number; vx:number; vz:number; fall:number; animation:number };
+type PickupState = { id:WeaponId; x:number; z:number; collected:boolean };
+
+const initialEnemies: EnemyState[] = [
+  {x:-10.5,z:-0.65,health:2,alive:true,kind:"crawler",knocked:0,vx:0,vz:0,fall:0,animation:0},
+  {x:-7.4,z:0.7,health:2,alive:true,kind:"crawler",knocked:0,vx:0,vz:0,fall:0,animation:1},
+  {x:-3.0,z:-0.7,health:3,alive:true,kind:"brute",knocked:0,vx:0,vz:0,fall:0,animation:2},
+  {x:0.7,z:0.75,health:2,alive:true,kind:"crawler",knocked:0,vx:0,vz:0,fall:0,animation:3},
+  {x:4.0,z:-0.75,health:2,alive:true,kind:"spitter",knocked:0,vx:0,vz:0,fall:0,animation:4},
+  {x:7.4,z:0.65,health:3,alive:true,kind:"brute",knocked:0,vx:0,vz:0,fall:0,animation:5},
+];
+const initialPickups: PickupState[] = [
+  {id:"pipe",x:-6.1,z:0.15,collected:false},
+  {id:"machete",x:-0.5,z:0.1,collected:false},
+  {id:"shotgun",x:5.2,z:0.1,collected:false},
+];
+
+type WorldControls = {
+  horizontal:number; depth:number; attack:boolean; grab:boolean; jump:boolean; pickup:boolean;
 };
+type WorldProps = Props & { controls:React.MutableRefObject<WorldControls> };
 
-const mat = (scene: Scene, name: string, color: Color3, emissive?: Color3) => {
-  const m = new StandardMaterial(name, scene);
-  m.diffuseColor = color;
-  m.specularColor = new Color3(0.08, 0.08, 0.08);
-  if (emissive) m.emissiveColor = emissive;
-  return m;
-};
-
-function box(scene: Scene, name: string, size: {width:number;height:number;depth:number}, pos: Vector3, material: StandardMaterial) {
-  const m = MeshBuilder.CreateBox(name, size, scene);
-  m.position.copyFrom(pos); m.material = material; m.isPickable = false; return m;
+function FleshyWall() {
+  const lobes = useMemo(()=>Array.from({length:66},(_,i)=>({x:-16+(i%22)*0.64,y:0.45+Math.floor(i/22)*1.42+(Math.sin(i*1.7)*0.16),sx:0.35+(i%4)*0.07,sy:0.48+(i%3)*0.09,sz:0.16+(i%3)*0.035})),[]);
+  return <group>
+    <mesh position={[-9.2,2.35,2]} castShadow receiveShadow><boxGeometry args={[14,4.8,0.6]}/><meshStandardMaterial color="#18210d" roughness={0.92}/></mesh>
+    {lobes.map((p,i)=><mesh key={i} position={[p.x,p.y,1.62]} scale={[p.sx,p.sy,p.sz]} castShadow receiveShadow>
+      <sphereGeometry args={[1,24,18]}/><meshStandardMaterial color={i%5===0?"#647333":i%3===0?"#3e4d20":"#283819"} roughness={0.28} metalness={0.02}/>
+    </mesh>)}
+    {Array.from({length:14},(_,i)=><group key={i} position={[-15.7+i*1.05,0,1.22]}>
+      <mesh position={[0,2.1,0]} rotation={[0,0,Math.sin(i*2)*0.12]}><cylinderGeometry args={[0.035,0.055,3.8,10]}/><meshStandardMaterial color="#17240f" roughness={0.65}/></mesh>
+      <mesh position={[0.18,0.3,0.08]} scale={[0.16,0.6,0.15]}><capsuleGeometry args={[0.12,0.65,6,12]}/><meshStandardMaterial color="#71803b" roughness={0.24}/></mesh>
+    </group>)}
+    {Array.from({length:18},(_,i)=><mesh key={i} position={[-16+i*0.78,3.95-(i%4)*0.14,1.3]} rotation={[0,0,Math.PI]}><capsuleGeometry args={[0.08,0.38+(i%4)*0.1,5,10]}/><meshStandardMaterial color="#637638" roughness={0.22}/></mesh>)}
+    {Array.from({length:12},(_,i)=><mesh key={i} position={[-16+i*1.28,0.12,1.2]} rotation={[0,0,0]} scale={[0.75,0.12,0.42]}><sphereGeometry args={[0.5,18,12]}/><meshStandardMaterial color="#65783a" roughness={0.2}/></mesh>)}
+  </group>;
 }
 
-function buildExterior(scene: Scene) {
-  const ground = mat(scene, "mud-ground", new Color3(0.105, 0.09, 0.075));
-  const wall = mat(scene, "slime-wall", new Color3(0.17, 0.24, 0.13));
-  const slime = mat(scene, "slime-drips", new Color3(0.31, 0.42, 0.17));
-  const bark = mat(scene, "tree-bark", new Color3(0.12, 0.075, 0.055));
-  const leaves = mat(scene, "dead-leaves", new Color3(0.10, 0.15, 0.09));
-  const stone = mat(scene, "mansion-stone", new Color3(0.22, 0.20, 0.19));
-  const trim = mat(scene, "mansion-trim", new Color3(0.07, 0.065, 0.07));
-  const windowMat = mat(scene, "lit-windows", new Color3(0.34, 0.13, 0.075), new Color3(0.16, 0.035, 0.012));
-  const doorMat = mat(scene, "front-door", new Color3(0.075, 0.025, 0.025));
-  const moon = mat(scene, "moon", new Color3(0.48, 0.48, 0.42), new Color3(0.2, 0.2, 0.16));
-
-  const floor = MeshBuilder.CreateGround("exterior-ground", {width:34,height:7}, scene);
-  floor.position.set(0,0,0); floor.material = ground; floor.isPickable = false;
-  box(scene,"slimy-boundary-wall",{width:13,height:4.8,depth:0.55},new Vector3(-10,2.35,2.0),wall);
-  const slimeCore=mat(scene,"slime-organic-core",new Color3(0.22,0.30,0.105));
-  slimeCore.specularColor=new Color3(0.48,0.52,0.25);slimeCore.specularPower=72;
-  const slimeFlesh=mat(scene,"slime-fleshy-ridges",new Color3(0.34,0.39,0.14));
-  slimeFlesh.specularColor=new Color3(0.62,0.58,0.28);slimeFlesh.specularPower=96;
-  const slimeVein=mat(scene,"slime-dark-veins",new Color3(0.12,0.20,0.075));
-  const slimeWet=mat(scene,"slime-wet-highlights",new Color3(0.52,0.58,0.24),new Color3(0.035,0.045,0.008));
-  for(let row=0;row<3;row++){
-    for(let col=0;col<13;col++){
-      const x=-16.0+col*1.0+(row%2)*0.42;
-      const y=0.75+row*1.48+Math.sin(col*1.7+row)*0.18;
-      const lobe=MeshBuilder.CreateSphere("slime-wall-flesh-lobe-"+row+"-"+col,{diameter:1,segments:12},scene);
-      lobe.position.set(x,y,1.62-(col%3)*0.035);
-      lobe.scaling.set(0.72+(col%3)*0.12,0.78+(row%2)*0.16,0.24+(col%2)*0.08);
-      lobe.material=(col+row)%4===0?slimeFlesh:slimeCore;lobe.isPickable=false;
-      const nodule=MeshBuilder.CreateSphere("slime-wall-nodule-"+row+"-"+col,{diameter:0.42+(col%3)*0.12,segments:10},scene);
-      nodule.position.set(x+(col%2?0.25:-0.22),y+0.36,1.34);nodule.scaling.set(1,0.72,0.55);nodule.material=slimeFlesh;nodule.isPickable=false;
-    }
-  }
-  for(let vein=0;vein<9;vein++){
-    const x=-15.8+vein*1.45;
-    const path=[new Vector3(x,0.35,1.28),new Vector3(x+0.22,1.1,1.22),new Vector3(x-0.12,1.85,1.22),new Vector3(x+0.28,2.55,1.22),new Vector3(x+0.05,3.35,1.24),new Vector3(x+0.34,4.55,1.3)];
-    const tube=MeshBuilder.CreateTube("slime-wall-vein-"+vein,{path,radius:0.045+(vein%3)*0.018,tessellation:8},scene);
-    tube.material=slimeVein;tube.isPickable=false;
-  }
-  for(let i=0;i<18;i++){
-    const x=-16+i*0.74;
-    const length=0.45+(i%5)*0.22;
-    const drip=MeshBuilder.CreateCapsule("slime-drip-"+i,{height:length,radius:0.10+(i%3)*0.035,tessellation:10,subdivisions:2},scene);
-    drip.position.set(x,4.35-(i%4)*0.18,1.34);drip.material=i%3===0?slimeWet:slimeFlesh;drip.isPickable=false;
-    const tip=MeshBuilder.CreateSphere("slime-drip-tip-"+i,{diameter:0.20+(i%3)*0.05,segments:10},scene);
-    tip.position.set(x,4.35-length/2-(i%4)*0.18,1.32);tip.scaling.y=1.25;tip.material=slimeWet;tip.isPickable=false;
-  }
-  for(let i=0;i<11;i++){
-    const pool=MeshBuilder.CreateSphere("slime-pool-"+i,{diameter:0.55+(i%3)*0.18,segments:10},scene);
-    pool.scaling.set(1.7,0.18,0.72);pool.position.set(-16+i*1.25,0.10,1.24);pool.material=i%3===0?slimeWet:slimeFlesh;pool.isPickable=false;
-  }
-  for(let i=0;i<9;i++){
-    const x=-1.8+i*1.35;
-    const trunk=MeshBuilder.CreateCylinder(`tree-trunk-${i}`,{height:4.3+(i%3)*0.55,diameter:0.32+(i%2)*0.1,tessellation:6},scene);
-    trunk.position.set(x,2.15,2.6+(i%2)*0.55); trunk.material=bark; trunk.isPickable=false;
-    for(let b=0;b<3;b++){
-      const branch=MeshBuilder.CreateCylinder(`tree-branch-${i}-${b}`,{height:1.8,diameter:0.14,tessellation:5},scene);
-      branch.position.set(x+(b-1)*0.55,3.35+(b%2)*0.45,2.55); branch.rotation.z=(b-1)*0.65; branch.material=bark; branch.isPickable=false;
-    }
-    const canopy=MeshBuilder.CreateSphere(`tree-foliage-${i}`,{diameter:1.8,segments:5},scene);
-    canopy.position.set(x,4.05,2.8); canopy.scaling.y=0.7; canopy.material=leaves; canopy.isPickable=false;
-  }
-  box(scene,"mansion-facade",{width:12,height:7,depth:1.0},new Vector3(11,3.45,2.3),stone);
-  box(scene,"mansion-roof",{width:13.2,height:0.55,depth:1.5},new Vector3(11,7.15,2.2),trim);
-  for(const x of [7.2,10.2,13.2,16.2]){
-    box(scene,`mansion-window-${x}`,{width:1.25,height:2.0,depth:0.08},new Vector3(x,4.35,1.72),windowMat);
-    box(scene,`mansion-window-frame-${x}`,{width:1.48,height:2.22,depth:0.12},new Vector3(x,4.35,1.82),trim);
-    box(scene,`mansion-window-inset-${x}`,{width:1.15,height:1.9,depth:0.05},new Vector3(x,4.35,1.64),windowMat);
-  }
-  box(scene,"door-frame",{width:2.5,height:3.6,depth:0.28},new Vector3(11,1.8,1.58),trim);
-  box(scene,"mansion-door",{width:1.9,height:3.15,depth:0.18},new Vector3(11,1.62,1.38),doorMat);
-  const knob=MeshBuilder.CreateSphere("door-knob",{diameter:0.13,segments:8},scene); knob.position.set(11.65,1.55,1.25); knob.material=moon; knob.isPickable=false;
-  const orb=MeshBuilder.CreateSphere("moon-disc",{diameter:2.1,segments:12},scene); orb.position.set(-9,8,5); orb.material=moon; orb.isPickable=false;
-  for(let i=0;i<10;i++){
-    const silhouette=MeshBuilder.CreateSphere(`distant-shrub-${i}`,{diameter:2.2,segments:5},scene);
-    silhouette.position.set(-16+i*3.3,0.8,5.5); silhouette.scaling.y=0.7; silhouette.material=trim; silhouette.isPickable=false;
-  }
-  return { doorX: 10.7 };
+function Exterior() {
+  return <group>
+    <mesh rotation={[-Math.PI/2,0,0]} position={[-2,0,0]} receiveShadow><planeGeometry args={[34,7]}/><meshStandardMaterial color="#211d19" roughness={1}/></mesh>
+    <FleshyWall/>
+    {Array.from({length:9},(_,i)=><group key={i} position={[-1.8+i*1.35,0,2.7+(i%2)*0.5]}>
+      <mesh position={[0,2.1,0]} castShadow><cylinderGeometry args={[0.17,0.26,4.2+(i%3)*0.45,9]}/><meshStandardMaterial color="#291912" roughness={1}/></mesh>
+      {Array.from({length:3},(_,b)=><mesh key={b} position={[(b-1)*0.42,3.4+(b%2)*0.4,0]} rotation={[0,0,(b-1)*0.55]}><cylinderGeometry args={[0.06,0.1,1.7,7]}/><meshStandardMaterial color="#241711"/></mesh>)}
+      <mesh position={[0,4.15,0]} scale={[1.05,0.7,0.9]}><icosahedronGeometry args={[1,1]}/><meshStandardMaterial color="#182018" flatShading/></mesh>
+    </group>)}
+    <mesh position={[11,3.4,2.35]} castShadow><boxGeometry args={[12,7,1]}/><meshStandardMaterial color="#38302e" roughness={0.92}/></mesh>
+    <mesh position={[11,7.1,2.3]}><boxGeometry args={[13,0.5,1.5]}/><meshStandardMaterial color="#171416"/></mesh>
+    {[7.2,10.2,13.2,16.2].map(x=><group key={x} position={[x,4.3,1.7]}>
+      <mesh><boxGeometry args={[1.4,2.2,0.13]}/><meshStandardMaterial color="#100e12"/></mesh>
+      <mesh position={[0,0,-0.08]}><boxGeometry args={[1.12,1.9,0.04]}/><meshStandardMaterial color="#6b2920" emissive="#3a1009"/></mesh>
+    </group>)}
+    <mesh position={[11,1.7,1.55]}><boxGeometry args={[2.5,3.6,0.24]}/><meshStandardMaterial color="#100b0b"/></mesh>
+    <mesh position={[-9,8,5]}><sphereGeometry args={[1.05,24,18]}/><meshBasicMaterial color="#a8a28a"/></mesh>
+  </group>;
 }
 
-function buildInterior(scene: Scene) {
-  const floorMat=mat(scene,"hall-floor",new Color3(0.16,0.12,0.105));
-  const wallMat=mat(scene,"hall-wall",new Color3(0.19,0.16,0.15));
-  const dark=mat(scene,"hall-dark-wood",new Color3(0.055,0.035,0.03));
-  const red=mat(scene,"hall-red-glow",new Color3(0.28,0.045,0.035),new Color3(0.12,0.012,0.008));
-  const gold=mat(scene,"hall-gold",new Color3(0.38,0.25,0.11));
-  const floor=MeshBuilder.CreateGround("mansion-hall-floor",{width:18,height:7},scene); floor.material=floorMat; floor.isPickable=false;
-  box(scene,"hall-back-wall",{width:18,height:7,depth:0.5},new Vector3(0,3.45,2.5),wallMat);
-  box(scene,"hall-ceiling-beam",{width:18,height:0.35,depth:3.5},new Vector3(0,6.8,0.8),dark);
-  for(const x of [-7,-3,1,5,8]){
-    box(scene,`hall-panel-${x}`,{width:1.8,height:4.8,depth:0.12},new Vector3(x,3.0,2.18),dark);
-    box(scene,`hall-sconce-${x}`,{width:0.28,height:0.7,depth:0.2},new Vector3(x,4.2,1.95),gold);
-    const light=MeshBuilder.CreateSphere(`hall-lamp-${x}`,{diameter:0.34,segments:8},scene); light.position.set(x,4.45,1.9); light.material=red; light.isPickable=false;
-  }
-  for(const x of [-5,0,5]){
-    box(scene,`portrait-frame-${x}`,{width:1.35,height:1.65,depth:0.16},new Vector3(x,4.65,2.08),gold);
-    box(scene,`portrait-shadow-${x}`,{width:1.08,height:1.38,depth:0.08},new Vector3(x,4.65,1.96),dark);
-  }
-  box(scene,"hall-table-top",{width:2.4,height:0.22,depth:0.85},new Vector3(-4,1.0,0.65),dark);
-  for(const x of [-4.9,-3.1]) box(scene,`hall-table-leg-${x}`,{width:0.18,height:1.0,depth:0.18},new Vector3(x,0.5,0.65),dark);
-  box(scene,"hall-stair-platform",{width:3.3,height:0.45,depth:1.1},new Vector3(6.8,0.22,0.85),dark);
-  box(scene,"interior-exit-frame",{width:2.2,height:3.5,depth:0.25},new Vector3(8.1,1.75,1.9),gold);
-  box(scene,"interior-exit-dark",{width:1.8,height:3.15,depth:0.12},new Vector3(8.1,1.58,1.72),dark);
+function MansionRoom() {
+  return <group>
+    <mesh rotation={[-Math.PI/2,0,0]} receiveShadow><planeGeometry args={[18,7]}/><meshStandardMaterial color="#332923" roughness={0.88}/></mesh>
+    <mesh position={[0,3.5,2.5]}><boxGeometry args={[18,7,0.5]}/><meshStandardMaterial color="#302522" roughness={0.94}/></mesh>
+    <mesh position={[0,6.8,0.8]}><boxGeometry args={[18,0.35,3.5]}/><meshStandardMaterial color="#1b1110"/></mesh>
+    {[-7,-3,1,5,8].map(x=><group key={x} position={[x,3,2.16]}>
+      <mesh><boxGeometry args={[1.8,4.8,0.12]}/><meshStandardMaterial color="#170f0d"/></mesh>
+      <mesh position={[0,1.25,-0.15]}><sphereGeometry args={[0.18,16,12]}/><meshStandardMaterial color="#a13a22" emissive="#57170d"/></mesh>
+    </group>)}
+    <mesh position={[-4,1,0.65]}><boxGeometry args={[2.4,0.22,0.85]}/><meshStandardMaterial color="#20120e"/></mesh>
+    {[-4.9,-3.1].map(x=><mesh key={x} position={[x,0.5,0.65]}><boxGeometry args={[0.18,1,0.18]}/><meshStandardMaterial color="#20120e"/></mesh>)}
+    <mesh position={[6.8,0.22,0.85]}><boxGeometry args={[3.3,0.45,1.1]}/><meshStandardMaterial color="#211512"/></mesh>
+  </group>;
 }
 
-function makeEnemy(scene: Scene, x: number, z: number, skin: StandardMaterial, eyes: StandardMaterial, gore: StandardMaterial, kind: EnemyKind = "crawler"): Enemy {
-  const root = new TransformNode(`monster-${kind}-root`, scene);
-  root.position.set(x, 0, z);
-  const animatedParts: Mesh[] = [];
-  const addPart = (mesh: Mesh, position: Vector3, material: StandardMaterial, rotation = Vector3.Zero()) => {
-    mesh.parent = root;
-    mesh.position.copyFrom(position);
-    mesh.rotation.copyFrom(rotation);
-    mesh.material = material;
-    mesh.isPickable = false;
-    animatedParts.push(mesh);
-    return mesh;
-  };
-  const torso = MeshBuilder.CreateSphere(`monster-${kind}-torso`, {diameter:1, segments:8}, scene);
-  torso.scaling.set(kind === "brute" ? 1.18 : kind === "crawler" ? 1.25 : 0.92, kind === "crawler" ? 0.72 : 1.18, kind === "spitter" ? 0.9 : 0.82);
-  addPart(torso, new Vector3(0, kind === "crawler" ? 0.62 : 0.9, 0), skin);
-  const body = MeshBuilder.CreateCapsule(`monster-${kind}-body`, {height: kind === "brute" ? 1.65 : 1.25, radius: kind === "brute" ? 0.48 : 0.39, tessellation:8, subdivisions:1}, scene);
-  addPart(body, new Vector3(0, kind === "crawler" ? 0.72 : 0.92, 0), skin);
-  const head = MeshBuilder.CreateSphere(`monster-${kind}-head`, {diameter: kind === "brute" ? 0.92 : 0.72, segments:8}, scene);
-  addPart(head, new Vector3(kind === "spitter" ? 0.12 : 0, kind === "crawler" ? 1.08 : 1.72, -0.04), skin);
-  const jaw = MeshBuilder.CreateSphere(`monster-${kind}-jaw`, {diameter:0.48, segments:7}, scene);
-  jaw.scaling.set(1.2,0.45,0.8);
-  addPart(jaw, new Vector3(0, kind === "crawler" ? 0.91 : 1.48, -0.27), gore);
-  for (const side of [-1,1]) {
-    const eye = MeshBuilder.CreateSphere(`monster-${kind}-eye`, {diameter: kind === "brute" ? 0.16 : 0.13, segments:6}, scene);
-    addPart(eye, new Vector3(side*0.19, kind === "crawler" ? 1.12 : 1.78, -0.34), eyes);
-    const arm = MeshBuilder.CreateCapsule(`monster-${kind}-arm`, {height: kind === "brute" ? 1.15 : 0.9, radius: kind === "brute" ? 0.2 : 0.13, tessellation:6}, scene);
-    addPart(arm, new Vector3(side*(kind === "brute" ? 0.58 : 0.48), kind === "crawler" ? 0.57 : 0.92, -0.02), skin, new Vector3(0,0,side*0.72));
-    const claw = MeshBuilder.CreateCylinder(`monster-${kind}-claw`, {height:0.34, diameterTop:0.025, diameterBottom:0.17, tessellation:6}, scene);
-    addPart(claw, new Vector3(side*(kind === "brute" ? 0.78 : 0.66), kind === "crawler" ? 0.2 : 0.45, -0.12), gore, new Vector3(0,0,side*0.5));
-    const leg = MeshBuilder.CreateCapsule(`monster-${kind}-leg`, {height: kind === "crawler" ? 0.78 : 0.95, radius:0.17, tessellation:6}, scene);
-    addPart(leg, new Vector3(side*0.25, kind === "crawler" ? 0.22 : 0.38, 0.08), skin, new Vector3(0,0,side*0.24));
-  }
-  if (kind === "brute") {
-    for (let i=0;i<5;i++) {
-      const spike = MeshBuilder.CreateCylinder(`brute-spine-${i}`, {height:0.48, diameterTop:0, diameterBottom:0.22, tessellation:5}, scene);
-      addPart(spike, new Vector3(-0.38+i*0.19,1.62,-0.02), gore, new Vector3(0,0,-0.28));
-    }
-    const hump = MeshBuilder.CreateSphere("brute-hump", {diameter:0.82,segments:7}, scene);
-    hump.scaling.set(1.1,0.8,0.8); addPart(hump,new Vector3(-0.08,1.42,0.18),skin);
-  } else if (kind === "spitter") {
-    const sac = MeshBuilder.CreateSphere("spitter-throat-sac",{diameter:0.62,segments:7},scene);
-    sac.scaling.set(0.75,1.25,0.75); addPart(sac,new Vector3(0.28,1.05,-0.1),gore);
-    for(let i=0;i<3;i++){
-      const tendril=MeshBuilder.CreateCylinder(`spitter-tendril-${i}`,{height:0.72,diameterTop:0.035,diameterBottom:0.12,tessellation:6},scene);
-      addPart(tendril,new Vector3(-0.35+i*0.34,0.38,-0.22),gore,new Vector3(0,0,(i-1)*0.48));
-    }
-  } else {
-    for(let i=0;i<4;i++){
-      const rib=MeshBuilder.CreateSphere(`crawler-rib-${i}`,{diameter:0.28,segments:6},scene);
-      rib.scaling.set(1.4,0.45,0.7); addPart(rib,new Vector3(-0.28+i*0.18,0.7,0.28),gore);
-    }
-  }
-  for(let i=0;i<4;i++){
-    const tooth=MeshBuilder.CreateCylinder(`monster-${kind}-tooth-${i}`,{height:0.18,diameterTop:0,diameterBottom:0.075,tessellation:5},scene);
-    addPart(tooth,new Vector3(-0.18+i*0.12,kind==="crawler"?0.9:1.42,-0.42),new StandardMaterial(`monster-tooth-material-${kind}`,scene));
-    (tooth.material as StandardMaterial).diffuseColor=new Color3(0.82,0.72,0.52);
-  }
-  return {root,body,head,health:kind==="brute"?3:2,alive:true,velocity:Vector3.Zero(),attackCooldown:0,crushed:false,kind,animatedParts,animationTime:Math.random()*6,knockedDown:0,knockDirection:1};
+function EnemyModel({ kind }: {kind:EnemyKind}) {
+  const brute=kind==="brute", crawler=kind==="crawler";
+  const flesh=brute?"#75513d":kind==="spitter"?"#a05c43":"#873b36";
+  return <group>
+    <mesh position={[0,crawler?0.62:0.92,0]} scale={[brute?0.62:crawler?0.55:0.46,crawler?0.36:0.62,0.36]} castShadow><sphereGeometry args={[1,24,18]}/><meshStandardMaterial color={flesh} roughness={0.68}/></mesh>
+    <mesh position={[0,crawler?1.05:1.65,-0.04]} scale={[brute?0.48:0.38,brute?0.48:0.38,0.34]} castShadow><sphereGeometry args={[1,24,18]}/><meshStandardMaterial color={flesh}/></mesh>
+    <mesh position={[0,crawler?0.9:1.45,-0.27]} scale={[0.27,0.12,0.09]}><sphereGeometry args={[1,18,12]}/><meshStandardMaterial color="#310b10"/></mesh>
+    {[-1,1].map(side=><group key={side}>
+      <mesh position={[side*(brute?0.58:0.47),crawler?0.56:0.9,0]} rotation={[0,0,side*0.55]}><capsuleGeometry args={[brute?0.19:0.13,0.55,6,12]}/><meshStandardMaterial color={flesh}/></mesh>
+      <mesh position={[side*0.24,crawler?0.22:0.36,0.06]} rotation={[0,0,side*0.25]}><capsuleGeometry args={[0.14,0.45,6,12]}/><meshStandardMaterial color={flesh}/></mesh>
+      <mesh position={[side*0.19,crawler?1.12:1.75,-0.32]}><sphereGeometry args={[0.075,12,10]}/><meshStandardMaterial color="#ff4c28" emissive="#a41b08"/></mesh>
+    </group>)}
+    {brute&&Array.from({length:5},(_,i)=><mesh key={i} position={[-0.36+i*0.18,1.62,0.1]} rotation={[0,0,-0.25]}><coneGeometry args={[0.12,0.48,7]}/><meshStandardMaterial color="#49332d"/></mesh>)}
+    {kind==="spitter"&&<mesh position={[0.28,1.05,-0.1]} scale={[0.28,0.45,0.27]}><sphereGeometry args={[1,20,16]}/><meshStandardMaterial color="#b46b4c" roughness={0.35}/></mesh>}
+    {crawler&&Array.from({length:4},(_,i)=><mesh key={i} position={[-0.26+i*0.17,0.7,0.25]} scale={[0.18,0.055,0.1]}><sphereGeometry args={[1,12,8]}/><meshStandardMaterial color="#4a171a"/></mesh>)}
+  </group>;
 }
 
-function makeWeapon(scene: Scene, id: WeaponId, position: Vector3, metal: StandardMaterial, wood: StandardMaterial, glow: StandardMaterial) {
-  const root = new TransformNode(`pickup-${id}`, scene);
-  root.position.copyFrom(position);
-  const parts: Mesh[] = [];
-  if(id==="pipe"){
-    const shaft=MeshBuilder.CreateCylinder("pickup-pipe-shaft",{height:1.35,diameter:0.105,tessellation:8},scene);
-    shaft.rotation.z=Math.PI/2; shaft.position.y=0.1; shaft.material=metal; parts.push(shaft);
-    const grip=MeshBuilder.CreateCylinder("pickup-pipe-grip",{height:0.32,diameter:0.13,tessellation:8},scene);
-    grip.rotation.z=Math.PI/2; grip.position.set(-0.35,0.1,0); grip.material=wood; parts.push(grip);
-  } else if(id==="machete"){
-    const blade=MeshBuilder.CreateBox("pickup-machete-blade",{width:0.92,height:0.075,depth:0.055},scene);
-    blade.position.set(0.35,0.13,0); blade.material=metal; parts.push(blade);
-    const handle=MeshBuilder.CreateCylinder("pickup-machete-handle",{height:0.34,diameter:0.12,tessellation:8},scene);
-    handle.rotation.z=Math.PI/2; handle.position.set(-0.28,0.13,0); handle.material=wood; parts.push(handle);
-  } else {
-    const barrel=MeshBuilder.CreateCylinder("pickup-shotgun-barrel",{height:1.05,diameter:0.09,tessellation:8},scene);
-    barrel.rotation.z=Math.PI/2; barrel.position.set(0.12,0.18,0); barrel.material=metal; parts.push(barrel);
-    const stock=MeshBuilder.CreateBox("pickup-shotgun-stock",{width:0.45,height:0.14,depth:0.14},scene);
-    stock.position.set(-0.58,0.12,0); stock.material=wood; parts.push(stock);
-    const pump=MeshBuilder.CreateBox("pickup-shotgun-pump",{width:0.28,height:0.15,depth:0.16},scene);
-    pump.position.set(-0.02,0.04,0); pump.material=wood; parts.push(pump);
-  }
-  const marker=MeshBuilder.CreateTorus(`pickup-${id}-ring`,{diameter:1.15,thickness:0.035,tessellation:20},scene);
-  marker.rotation.x=Math.PI/2; marker.position.y=0.04; marker.material=glow; parts.push(marker);
-  for(const part of parts){part.parent=root;part.isPickable=false;}
-  return root;
+function WeaponModel({ id }: {id:WeaponId}) {
+  return <group rotation={[0,0,-0.35]}>
+    {id==="pipe"?<mesh rotation={[0,0,Math.PI/2]}><cylinderGeometry args={[0.055,0.055,1.35,12]}/><meshStandardMaterial color="#858987" metalness={0.78} roughness={0.28}/></mesh>:id==="machete"?<>
+      <mesh position={[0.22,0,0]}><boxGeometry args={[0.88,0.075,0.055]}/><meshStandardMaterial color="#c2c4bd" metalness={0.8} roughness={0.2}/></mesh>
+      <mesh position={[-0.28,0,0]}><cylinderGeometry args={[0.06,0.06,0.34,10]}/><meshStandardMaterial color="#513020"/></mesh>
+    </>:<>
+      <mesh rotation={[0,0,Math.PI/2]}><cylinderGeometry args={[0.045,0.045,1.05,12]}/><meshStandardMaterial color="#777c7a" metalness={0.8}/></mesh>
+      <mesh position={[-0.55,-0.05,0]}><boxGeometry args={[0.45,0.14,0.14]}/><meshStandardMaterial color="#382219"/></mesh>
+    </>}
+  </group>;
 }
 
-function addImpact(scene: Scene, position: Vector3, material: StandardMaterial) {
-  for(let i=0;i<7;i++){
-    const drop=MeshBuilder.CreateSphere("impact-gore",{diameter:0.12+Math.random()*0.16,segments:5},scene);
-    drop.position.set(position.x+(Math.random()-0.5)*0.9,0.08,position.z+(Math.random()-0.5)*0.55);
-    drop.scaling.y=0.28; drop.material=material; drop.isPickable=false;
-  }
-}
-
-export default function GameView({ onScore, onKill, paused, onStageChange }: Props) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const joystickRef = useRef<HTMLDivElement>(null);
-  const joystickInput = useRef({ x: 0, y: 0, pointerId: -1 });
-  const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
-  const actionRefs = useRef<{ punch: () => void; grab: () => void; jump: () => void }>({ punch: () => {}, grab: () => {}, jump: () => {} });
-  const updateJoystick = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const base = joystickRef.current;
-    if (!base) return;
-    const rect = base.getBoundingClientRect();
-    const dx = event.clientX - (rect.left + rect.width / 2);
-    const dy = event.clientY - (rect.top + rect.height / 2);
-    const radius = rect.width * 0.34;
-    const distance = Math.hypot(dx, dy);
-    const scale = distance > radius ? radius / distance : 1;
-    const knobX = dx * scale;
-    const knobY = dy * scale;
-    joystickInput.current.x = knobX / radius;
-    joystickInput.current.y = knobY / radius;
-    setJoystickKnob({ x: knobX, y: knobY });
-  };
-  const releaseJoystick = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (joystickInput.current.pointerId !== event.pointerId) return;
-    joystickInput.current = { x: 0, y: 0, pointerId: -1 };
-    setJoystickKnob({ x: 0, y: 0 });
-    if (joystickRef.current?.hasPointerCapture(event.pointerId)) joystickRef.current.releasePointerCapture(event.pointerId);
-  };
-  const callbacks = useRef({ onScore, onKill, onStageChange });
-  callbacks.current = { onScore, onKill, onStageChange };
-  const pausedRef = useRef(paused);
-  pausedRef.current = paused;
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const engine = new Engine(canvas, true, { preserveDrawingBuffer: false, stencil: true, adaptToDeviceRatio: true });
-    const scene = new Scene(engine);
-    scene.clearColor.set(0.018,0.016,0.023,1);
-    new HemisphericLight("ambient",new Vector3(0,1,0),scene).intensity=0.72;
-    const keyLight=new DirectionalLight("moonlight",new Vector3(-0.35,-1,0.25),scene); keyLight.intensity=0.75;
-
-    let phase: 1 | 2 = 1;
-    let transitionLock=false;
-    let facing=1;
-    let equipped: WeaponId | null=null;
-    let attackCooldown=0;
-    let grabCooldown=0;
-    let jumpVelocity=0;
-    let grounded=true;
-    let shotgunAmmo=6;
-    let interiorBuilt=false;
-    const camera=new FreeCamera("side-camera",new Vector3(-14,3.3,-16),scene);
-    camera.setTarget(new Vector3(-14,1.8,0));
-    camera.mode=Camera.ORTHOGRAPHIC_CAMERA;
-    const updateCameraBounds=()=>{
-      const aspect=engine.getRenderWidth()/Math.max(1,engine.getRenderHeight());
-      const halfH=4.6; camera.orthoTop=halfH; camera.orthoBottom=-halfH; camera.orthoLeft=-halfH*aspect; camera.orthoRight=halfH*aspect;
-    };
-    updateCameraBounds();
-    const exterior=buildExterior(scene);
-    const exteriorMeshes=[...scene.meshes];
-    const rick=new RickProcedural(scene);
-    const player=rick.root;
-    player.position.set(-14,0,0);
-    const keys=new Set<string>();
-    const enemies: Enemy[]=[];
-    const enemySkin=mat(scene,"enemy-flesh",new Color3(0.34,0.075,0.065));
-    const bruteSkin=mat(scene,"enemy-brute-flesh",new Color3(0.24,0.16,0.09));
-    const spitterSkin=mat(scene,"enemy-spitter-flesh",new Color3(0.38,0.19,0.12));
-    const enemyEyes=mat(scene,"enemy-eyes",new Color3(0.65,0.04,0.025),new Color3(0.25,0.01,0.005));
-    const blood=mat(scene,"enemy-blood",new Color3(0.25,0.012,0.018));
-    const metal=mat(scene,"weapon-metal",new Color3(0.42,0.43,0.40));
-    const wood=mat(scene,"weapon-grip",new Color3(0.16,0.075,0.045));
-    const pickupGlow=mat(scene,"weapon-pickup-glow",new Color3(0.65,0.16,0.08),new Color3(0.28,0.025,0.008));
-    const pickups: {id:WeaponId;root:TransformNode;collected:boolean}[]=[
-      {id:"pipe",root:makeWeapon(scene,"pipe",new Vector3(-7.3,0.15,0),metal,wood,pickupGlow),collected:false},
-      {id:"machete",root:makeWeapon(scene,"machete",new Vector3(0.9,0.15,0),metal,wood,pickupGlow),collected:false},
-      {id:"shotgun",root:makeWeapon(scene,"shotgun",new Vector3(8.1,0.15,0),metal,wood,pickupGlow),collected:false}
-    ];
-    const heldWeapon=new TransformNode("rick-held-weapon",scene);
-    heldWeapon.parent=player; heldWeapon.position.set(0.58,1.0,-0.22); heldWeapon.rotation.z=-0.15;
-    const heldParts: Mesh[]=[];
-    const makeHeldWeapon=(id:WeaponId)=>{
-      heldParts.forEach(m=>m.dispose()); heldParts.length=0;
-      const add=(m:Mesh)=>{m.parent=heldWeapon;m.isPickable=false;heldParts.push(m);};
-      if(id==="pipe"){
-        const m=MeshBuilder.CreateCylinder("held-pipe",{height:1.35,diameter:0.105,tessellation:8},scene);m.rotation.z=Math.PI/2;m.material=metal;add(m);
-      } else if(id==="machete"){
-        const blade=MeshBuilder.CreateBox("held-machete-blade",{width:0.92,height:0.075,depth:0.055},scene);blade.position.x=0.38;blade.material=metal;add(blade);
-        const handle=MeshBuilder.CreateCylinder("held-machete-handle",{height:0.34,diameter:0.12,tessellation:8},scene);handle.rotation.z=Math.PI/2;handle.position.x=-0.22;handle.material=wood;add(handle);
-      } else {
-        const barrel=MeshBuilder.CreateCylinder("held-shotgun-barrel",{height:1.05,diameter:0.09,tessellation:8},scene);barrel.rotation.z=Math.PI/2;barrel.position.x=0.12;barrel.material=metal;add(barrel);
-        const stock=MeshBuilder.CreateBox("held-shotgun-stock",{width:0.45,height:0.14,depth:0.14},scene);stock.position.x=-0.58;stock.material=wood;add(stock);
-      }
-      heldWeapon.setEnabled(true);
-    };
-    heldWeapon.setEnabled(false);
-    const spawnEnemy=(x:number,z:number,kind:EnemyKind="crawler")=>enemies.push(makeEnemy(scene,x,z,kind==="brute"?bruteSkin:kind==="spitter"?spitterSkin:enemySkin,enemyEyes,blood,kind));
-    const enemySpawns: {x:number;z:number;kind:EnemyKind}[]=[
-      {x:-11.2,z:-0.75,kind:"crawler"},{x:-9.4,z:0.75,kind:"crawler"},
-      {x:-4.6,z:-0.75,kind:"spitter"},{x:-2.8,z:0.75,kind:"crawler"},
-      {x:2.6,z:-0.75,kind:"brute"},{x:4.4,z:0.75,kind:"crawler"},
-      {x:7.0,z:-0.75,kind:"spitter"},{x:9.2,z:0.75,kind:"brute"}
-    ];
-    enemySpawns.forEach(({x,z,kind})=>spawnEnemy(x,z,kind));
-    const buildRoom=()=>{if(interiorBuilt)return;interiorBuilt=true;buildInterior(scene);};
-    const nearestEnemy=(range:number)=>{
-      let found:Enemy|null=null;let distance=range;
-      for(const enemy of enemies){if(!enemy.alive)continue;const d=Vector3.Distance(player.position,enemy.root.position);if(d<distance){distance=d;found=enemy;}}
-      return found;
-    };
-    const killEnemy=(enemy:Enemy)=>{
-      if(!enemy.alive)return;enemy.alive=false;enemy.root.setEnabled(false);
-      callbacks.current.onKill();callbacks.current.onScore(100);
-    };
-    const damageEnemy=(enemy:Enemy,kind:"hands"|"pipe"|"machete"|"shotgun"|"throw")=>{
-      if(!enemy.alive)return;
-      if(kind==="pipe"){
-        enemy.health=1;enemy.velocity.x=facing*20;enemy.root.position.x+=facing*0.55;
-        enemy.body.scaling.y=0.9;enemy.root.position.y=0;
-      } else if(kind==="machete"){
-        enemy.health=0;
-        enemy.head.parent=null;enemy.head.position.copyFrom(enemy.root.position.add(new Vector3(0,1.7,0)));
-        enemy.head.position.x+=facing*0.2;enemy.head.position.y+=0.3;
-        enemy.head.rotation.z=facing*0.7;enemy.head.scaling.set(0.82,0.82,0.82);
-        enemy.head.metadata={velocity:new Vector3(facing*8,3.2,0),headProjectile:true};
-        enemy.body.scaling.y=0.72;enemy.root.scaling.y=0.72;
-        addImpact(scene,enemy.root.position,blood);
-      } else if(kind==="shotgun"){
-        enemy.health=0;enemy.head.setEnabled(false);addImpact(scene,enemy.root.position,blood);
-        for(let i=0;i<10;i++){
-          const fragment=MeshBuilder.CreateSphere("shotgun-head-fragment",{diameter:0.09+Math.random()*0.12,segments:5},scene);
-          fragment.position.set(enemy.root.position.x,1.7,enemy.root.position.z);
-          fragment.material=blood;fragment.isPickable=false;
-          fragment.metadata={velocity:new Vector3((Math.random()-0.5)*7,Math.random()*5,(Math.random()-0.5)*3)};
-        }
-      } else {
-        enemy.health-=kind==="throw"?2:1;
-        enemy.velocity.x=facing*(kind==="throw"?7:3.2);
-        if(enemy.health<=0)addImpact(scene,enemy.root.position,blood);
-      }
-      if(enemy.health<=0)killEnemy(enemy);
-    };
-    const pickupWeapon=()=>{
-      let candidate: typeof pickups[number] | undefined;
-      let nearest=1.75;
-      for(const pickup of pickups){
-        if(pickup.collected)continue;
-        const dx=player.position.x-pickup.root.position.x;
-        const dz=player.position.z-pickup.root.position.z;
-        const distance=Math.hypot(dx,dz);
-        if(distance<nearest){nearest=distance;candidate=pickup;}
-      }
-      if(!candidate)return;
-      candidate.collected=true;candidate.root.setEnabled(false);equipped=candidate.id;makeHeldWeapon(candidate.id);
-    };
-    const attack=()=>{
-      if(attackCooldown>0)return;
-      attackCooldown=equipped==="shotgun"?0.7:0.48;rick.playAttack();
-      if(equipped==="shotgun"){
-        if(shotgunAmmo<=0)return;shotgunAmmo--;
-        const target=nearestEnemy(7.0);
-        if(target&&Math.sign(target.root.position.x-player.position.x)===facing)damageEnemy(target,"shotgun");
-        return;
-      }
-      const target=nearestEnemy(equipped==="pipe"?2.0:equipped==="machete"?2.0:1.65);
-      if(!target||Math.sign(target.root.position.x-player.position.x)!==facing)return;
-      damageEnemy(target,equipped??"hands");
-    };
-    const grabAndThrow=()=>{
-      if(grabCooldown>0||pausedRef.current)return;
-      grabCooldown=1.15;
-      const target=nearestEnemy(1.8);
-      if(!target)return;
-      rick.playGrab();
-      target.knockedDown=1.25;
-      target.knockDirection=-facing;
-      target.velocity.set(-facing*5.8,(target.root.position.z-player.position.z)*1.8,0);
-      target.root.rotation.z=0;
-    };
-    const jump=()=>{if(!grounded||pausedRef.current)return;grounded=false;jumpVelocity=6.2;};
-    actionRefs.current={punch:attack,grab:grabAndThrow,jump};
-    const keyDown=(e:KeyboardEvent)=>{
-      const key=e.key.toLowerCase();keys.add(key);
-      if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(key))e.preventDefault();
-      if(key==="j")attack();
-      if(key==="k")grabAndThrow();
-      if(key===" "||key==="l")jump();
-      if(key==="e")pickupWeapon();
-    };
-    const keyUp=(e:KeyboardEvent)=>keys.delete(e.key.toLowerCase());
-    window.addEventListener("keydown",keyDown);window.addEventListener("keyup",keyUp);
-    let last=performance.now();
-    engine.runRenderLoop(()=>{
-      const now=performance.now();const dt=Math.min((now-last)/1000,0.045);last=now;
-      if(!pausedRef.current){
-        attackCooldown=Math.max(0,attackCooldown-dt);grabCooldown=Math.max(0,grabCooldown-dt);
-        const keyboardHorizontal=Number(keys.has("d")||keys.has("arrowright"))-Number(keys.has("a")||keys.has("arrowleft"));
-        const keyboardDepth=Number(keys.has("s")||keys.has("arrowdown"))-Number(keys.has("w")||keys.has("arrowup"));
-        const horizontal=Math.max(-1,Math.min(1,keyboardHorizontal+joystickInput.current.x));
-        const depth=Math.max(-1,Math.min(1,keyboardDepth+joystickInput.current.y));
-        const move=new Vector3(horizontal,0,depth);
-        if(move.lengthSquared()>0){
-          move.normalize();player.position.x+=move.x*4.25*dt;
-          player.position.z=Math.max(-1.35,Math.min(1.35,player.position.z+move.z*2.1*dt));
-          if(horizontal!==0)facing=horizontal>0?1:-1;
-          player.rotation.y=facing>0?-Math.PI/2:Math.PI/2;
-        }
-        if(!grounded){player.position.y+=jumpVelocity*dt;jumpVelocity-=16.5*dt;if(player.position.y<=0){player.position.y=0;jumpVelocity=0;grounded=true;}}
-        rick.update(dt,move.lengthSquared()>0);
-        pickups.forEach(p=>{if(!p.collected){p.root.rotation.y+=dt*0.65;p.root.position.y=0.15+Math.sin(now*0.002+p.root.position.x)*0.06;}});
-        // Mobile users have no physical E key: collect automatically on close approach.
-        const nearbyPickup=pickups.some(p=>!p.collected&&Math.hypot(player.position.x-p.root.position.x,player.position.z-p.root.position.z)<1.45);
-        if(nearbyPickup)pickupWeapon();
-        for(const enemy of enemies){
-          if(!enemy.alive)continue;
-          enemy.attackCooldown=Math.max(0,enemy.attackCooldown-dt);
-          if(enemy.knockedDown>0){
-            enemy.knockedDown=Math.max(0,enemy.knockedDown-dt);
-            enemy.root.position.x+=enemy.velocity.x*dt;
-            enemy.root.position.z+=enemy.velocity.y*dt;
-            enemy.velocity.scaleInPlace(Math.max(0,1-dt*3.8));
-            const fall=1-enemy.knockedDown/1.25;
-            enemy.root.rotation.z=enemy.knockDirection*Math.min(1,fall*1.8)*1.48;
-            enemy.root.position.y=Math.max(0.035,Math.sin(fall*Math.PI)*0.16);
-            if(enemy.knockedDown<=0)killEnemy(enemy);
-            continue;
-          }
-          enemy.animationTime+=dt*(enemy.kind==="crawler"?8:enemy.kind==="brute"?3.2:5);
-          const gait=Math.sin(enemy.animationTime);
-          enemy.animatedParts.forEach((part,index)=>{
-            if(part.name.includes("-arm"))part.rotation.z=(index%2===0?1:-1)*(0.45+gait*0.22);
-            else if(part.name.includes("-leg"))part.rotation.z=gait*0.28*(index%2===0?1:-1);
-            else if(part.name.endsWith("-head"))part.rotation.z=Math.sin(enemy.animationTime*0.5)*0.06;
-          });
-          enemy.root.position.y=enemy.kind==="crawler"?Math.abs(gait)*0.035:Math.sin(enemy.animationTime*2)*0.025;
-          if(Math.abs(enemy.velocity.x)>0.08){
-            enemy.root.position.x+=enemy.velocity.x*dt;enemy.root.position.z+=enemy.velocity.z*dt;
-            enemy.velocity.scaleInPlace(Math.max(0,1-dt*(equipped==="pipe"?1.5:2.8)));
-          } else if(phase===1){
-            const dx=player.position.x-enemy.root.position.x;
-            if(Math.abs(dx)>0.85)enemy.root.position.x+=Math.sign(dx)*1.15*dt;
-            const dz=player.position.z-enemy.root.position.z;
-            enemy.root.position.z+=Math.sign(dz)*Math.min(Math.abs(dz),1.2*dt);
-          }
-          enemy.root.position.x=Math.max(-16.0,Math.min(10.25,enemy.root.position.x));
-          enemy.root.position.z=Math.max(-1.35,Math.min(1.35,enemy.root.position.z));
-          if(enemy.velocity.length()<0.12)enemy.velocity.set(0,0,0);
-          if(enemy.root.position.x<=-15.8||enemy.root.position.x>=10.15){
-            if(!enemy.crushed&&(Math.abs(enemy.velocity.x)>1||equipped==="pipe")){
-              enemy.crushed=true;enemy.body.scaling.y=0.12;enemy.root.scaling.y=0.45;enemy.root.position.y=0.02;
-              addImpact(scene,enemy.root.position,blood);killEnemy(enemy);
-            }
-            enemy.velocity.set(0,0,0);
-          }
-        }
-        // Thrown bodies can collide with another creature and knock it down.
-        for(const thrown of enemies){
-          if(!thrown.alive||Math.abs(thrown.velocity.x)<2)continue;
-          for(const other of enemies){
-            if(other===thrown||!other.alive)continue;
-            if(Vector3.Distance(thrown.root.position,other.root.position)<0.8){
-              other.velocity.x=Math.sign(thrown.velocity.x)*5;damageEnemy(other,"throw");thrown.velocity.scaleInPlace(0.45);break;
-            }
-          }
-        }
-        // Small detached shotgun fragments fall under a simple visual gravity.
-        scene.meshes.forEach(mesh=>{
-          const velocity=mesh.metadata?.velocity as Vector3|undefined;
-          if(velocity){mesh.position.addInPlace(velocity.scale(dt));velocity.y-=9.8*dt;if(mesh.position.y<0.05){mesh.position.y=0.05;velocity.y=0;}
-          if(mesh.metadata?.headProjectile&&(mesh.position.x<=-15.8||mesh.position.x>=10.0)){mesh.scaling.set(0.9,0.12,0.45);mesh.metadata={};}}
-        });
-        if(phase===1){
-          player.position.x=Math.max(-16.2,Math.min(11.4,player.position.x));
-          camera.position.x+=(player.position.x-camera.position.x)*Math.min(1,dt*3.8);
-          camera.setTarget(new Vector3(camera.position.x,2.0,0));
-          if(player.position.x>=exterior.doorX&&!transitionLock){
-            transitionLock=true;phase=2;exteriorMeshes.forEach(mesh=>mesh.setEnabled(false));enemies.forEach(enemy=>enemy.root.setEnabled(false));pickups.forEach(pickup=>pickup.root.setEnabled(false));buildRoom();
-            player.position.set(-7.3,0,0);camera.position.set(-7.3,3.3,-16);camera.setTarget(new Vector3(-7.3,2,0));
-            callbacks.current.onStageChange(2);
-          }
-        }else{
-          player.position.x=Math.max(-8.1,Math.min(8.4,player.position.x));
-          camera.position.x+=(player.position.x-camera.position.x)*Math.min(1,dt*3.8);
-          camera.setTarget(new Vector3(camera.position.x,2,0));
-        }
-      }
-      scene.render();
+function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
+  const { camera, size } = useThree();
+  const player=useRef<THREE.Group>(null);
+  const enemyGroups=useRef<(THREE.Group|null)[]>([]);
+  const pickupGroups=useRef<(THREE.Group|null)[]>([]);
+  const enemies=useRef<EnemyState[]>(initialEnemies.map(e=>({...e})));
+  const pickups=useRef<PickupState[]>(initialPickups.map(p=>({...p})));
+  const motion=useRef<RickMotion>({moving:false,attackTime:0,grabTime:0,jumpHeight:0});
+  const [phase,setPhase]=useState<1|2>(1);
+  const [equipped,setEquipped]=useState<WeaponId|null>(null);
+  const [ammo,setAmmo]=useState(6);
+  const facing=useRef(1);
+  const attackCooldown=useRef(0),grabCooldown=useRef(0),jumpVelocity=useRef(0),grounded=useRef(true);
+  const cameraTarget=useRef(new THREE.Vector3(-14,1.9,0));
+  const [enemyVersion,setEnemyVersion]=useState(0);
+  const lastActions=useRef({attack:false,grab:false,jump:false,pickup:false});
+  const kills=useRef(0);
+  useEffect(()=>{camera.position.set(-14,3.6,-18);camera.lookAt(-14,1.8,0);},[camera]);
+  const kill=(enemy:EnemyState)=>{if(!enemy.alive)return;enemy.alive=false;kills.current++;onKill();onScore(100);setEnemyVersion(v=>v+1);};
+  const nearest=(range:number)=>{let result:EnemyState|null=null;let best=range;for(const e of enemies.current){if(!e.alive)continue;const d=Math.hypot(e.x-(player.current?.position.x??0),e.z-(player.current?.position.z??0));if(d<best){best=d;result=e;}}return result;};
+  const doPickup=()=>{if(!player.current)return;const candidates=pickups.current.filter(p=>!p.collected);let best:PickupState|undefined;let distance=1.75;for(const p of candidates){const d=Math.hypot(p.x-player.current.position.x,p.z-player.current.position.z);if(d<distance){best=p;distance=d;}}if(best){best.collected=true;setEquipped(best.id);}};
+  const doAttack=()=>{if(attackCooldown.current>0)return;attackCooldown.current=equipped==="shotgun"?0.7:0.48;motion.current.attackTime=0.34;if(equipped==="shotgun"){if(ammo<=0)return;setAmmo(a=>a-1);const e=nearest(7);if(e&&Math.sign(e.x-(player.current?.position.x??0))===facing.current)kill(e);return;}const e=nearest(equipped==="pipe"||equipped==="machete"?2:1.65);if(!e||Math.sign(e.x-(player.current?.position.x??0))!==facing.current)return;if(equipped==="pipe"){e.health=1;e.vx=facing.current*12;}else if(equipped==="machete"){e.health=0;kill(e);}else{e.health--;e.vx=facing.current*3.2;if(e.health<=0)kill(e);}};
+  const doGrab=()=>{if(grabCooldown.current>0||!player.current)return;grabCooldown.current=1.15;const e=nearest(1.8);motion.current.grabTime=0.46;if(!e)return;e.knocked=1.25;e.fall=-facing.current;e.vx=-facing.current*5.8;e.vz=(e.z-player.current.position.z)*1.8;};
+  const doJump=()=>{if(!grounded.current)return;grounded.current=false;jumpVelocity.current=6.2;};
+  useEffect(()=>{
+    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="j")doAttack();if(k==="k")doGrab();if(k===" "||k==="l")doJump();if(k==="e")doPickup();};
+    window.addEventListener("keydown",down);return()=>window.removeEventListener("keydown",down);
+  });
+  useEffect(()=>{controls.current.attack=doAttack;controls.current.grab=doGrab;controls.current.jump=doJump;controls.current.pickup=doPickup;});
+  useFrame((_,dt)=>{
+    if(paused||!player.current)return;
+    const c=controls.current;const prior=lastActions.current;
+    if(c.attack&&!prior.attack)doAttack();if(c.grab&&!prior.grab)doGrab();if(c.jump&&!prior.jump)doJump();if(c.pickup&&!prior.pickup)doPickup();
+    lastActions.current={attack:c.attack,grab:c.grab,jump:c.jump,pickup:c.pickup};
+    attackCooldown.current=Math.max(0,attackCooldown.current-dt);grabCooldown.current=Math.max(0,grabCooldown.current-dt);
+    const dx=THREE.MathUtils.clamp(c.horizontal,-1,1),dz=THREE.MathUtils.clamp(c.depth,-1,1);
+    const moving=Math.abs(dx)+Math.abs(dz)>0.08;motion.current.moving=moving;
+    if(moving){const v=new THREE.Vector3(dx,0,dz).normalize();player.current.position.x+=v.x*4.25*dt;player.current.position.z=THREE.MathUtils.clamp(player.current.position.z+v.z*2.1*dt,-1.35,1.35);if(Math.abs(dx)>0.05)facing.current=dx>0?1:-1;player.current.rotation.y=facing.current>0?-Math.PI/2:Math.PI/2;}
+    if(!grounded.current){motion.current.jumpHeight=Math.max(0,motion.current.jumpHeight+jumpVelocity.current*dt);jumpVelocity.current-=16.5*dt;if(motion.current.jumpHeight<=0){motion.current.jumpHeight=0;jumpVelocity.current=0;grounded.current=true;}}
+    motion.current.attackTime=Math.max(0,motion.current.attackTime-dt);motion.current.grabTime=Math.max(0,motion.current.grabTime-dt);
+    if(phase===1){const close=pickups.current.some(p=>!p.collected&&Math.hypot(player.current!.position.x-p.x,player.current!.position.z-p.z)<1.4);if(close)doPickup();}
+    enemies.current.forEach((e,i)=>{
+      if(!e.alive)return;const group=enemyGroups.current[i];if(!group)return;
+      e.animation+=dt*(e.kind==="crawler"?8:e.kind==="brute"?3.2:5);
+      if(e.knocked>0){e.knocked=Math.max(0,e.knocked-dt);e.x+=e.vx*dt;e.z+=e.vz*dt;e.vx*=Math.max(0,1-dt*3.8);e.vz*=Math.max(0,1-dt*3.8);const progress=1-e.knocked/1.25;group.rotation.z=e.fall*Math.min(1,progress*1.8)*1.48;group.position.y=Math.max(0.035,Math.sin(progress*Math.PI)*0.16);if(e.knocked<=0)kill(e);}
+      else {group.rotation.z=THREE.MathUtils.damp(group.rotation.z,0,8,dt);if(Math.abs(e.vx)>0.08){e.x+=e.vx*dt;e.z+=e.vz*dt;e.vx*=Math.max(0,1-dt*2.8);}else if(phase===1){const px=player.current!.position.x,pz=player.current!.position.z;if(Math.abs(px-e.x)>0.85)e.x+=Math.sign(px-e.x)*1.15*dt;e.z+=Math.sign(pz-e.z)*Math.min(Math.abs(pz-e.z),1.2*dt);}group.position.y=e.kind==="crawler"?Math.abs(Math.sin(e.animation))*0.035:Math.sin(e.animation*2)*0.025;}
+      e.x=THREE.MathUtils.clamp(e.x,phase===1?-16: -8.1,phase===1?10.25:8.4);e.z=THREE.MathUtils.clamp(e.z,-1.35,1.35);group.position.x=e.x;group.position.z=e.z;
     });
-    const resize=()=>{engine.resize();updateCameraBounds();};window.addEventListener("resize",resize);
-    return ()=>{
-      window.removeEventListener("keydown",keyDown);window.removeEventListener("keyup",keyUp);window.removeEventListener("resize",resize);
-      actionRefs.current={punch:()=>{},grab:()=>{},jump:()=>{}};
-      rick.dispose();scene.dispose();engine.dispose();
-    };
-  },[]);
+    if(phase===1){player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-16.2,11.4);if(player.current.position.x>=10.7){setPhase(2);onStageChange(2);player.current.position.set(-7.3,0,0);enemies.current.forEach(e=>{e.alive=false;});setEnemyVersion(v=>v+1);}}
+    else player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-8.1,8.4);
+    const targetX=player.current.position.x;camera.position.x=THREE.MathUtils.damp(camera.position.x,targetX,3.8,dt);camera.position.z=phase===1?-18:-17;camera.position.y=phase===1?3.6:4.2;camera.lookAt(targetX,1.8,0);
+    if(size.width>0){const aspect=size.width/Math.max(1,size.height);const halfH=phase===1?5.0:4.6;(camera as THREE.OrthographicCamera).left=-halfH*aspect;(camera as THREE.OrthographicCamera).right=halfH*aspect;(camera as THREE.OrthographicCamera).top=halfH;(camera as THREE.OrthographicCamera).bottom=-halfH;(camera as THREE.OrthographicCamera).updateProjectionMatrix();}
+  });
+  return <group>
+    <color attach="background" args={["#08070a"]}/>
+    <ambientLight intensity={0.78}/>
+    <directionalLight position={[-5,9,-6]} intensity={1.55} castShadow shadow-mapSize={[2048,2048]}/>
+    <pointLight position={[3,4,0]} intensity={0.45} color="#8d3330"/>
+    {phase===1?<Exterior/>:<MansionRoom/>}
+    {phase===1&&<group position={[-14,0,0]}><mesh position={[0,0.02,0]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[0.48,0.56,32]}/><meshBasicMaterial color="#7d342d"/></mesh></group>}
+    <group ref={player}><RickTaylorCharacter motion={motion.current}/>{equipped&&<group position={[facing.current*0.48,1.12,-0.22]}><WeaponModel id={equipped}/></group>}</group>
+    {enemies.current.map((e,i)=>e.alive&&<group key={i} ref={node=>{enemyGroups.current[i]=node;}} position={[e.x,0,e.z]}><EnemyModel kind={e.kind}/></group>)}
+    {phase===1&&pickups.current.map((p,i)=>!p.collected&&<group key={p.id} ref={node=>{pickupGroups.current[i]=node;}} position={[p.x,0.16,p.z]}>
+      <mesh rotation={[-Math.PI/2,0,0]}><torusGeometry args={[0.58,0.035,8,24]}/><meshStandardMaterial color="#db6b42" emissive="#612012"/></mesh>
+      <group position={[0,0.18,0]}><WeaponModel id={p.id}/></group>
+    </group>)}
+    {phase===1&&<group position={[11,0,2.0]}><mesh position={[0,1.8,0]}><boxGeometry args={[2.3,3.6,0.22]}/><meshStandardMaterial color="#100a0b"/></mesh></group>}
+    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.035,0]} receiveShadow><planeGeometry args={[100,100]}/><shadowMaterial opacity={0.24}/></mesh>
+  </group>;
+}
 
-  return (
-    <div className="game-viewport">
-      <canvas ref={canvasRef} className="game-canvas" aria-label="Splatterhouse: combate com armas na fase externa e interior 2,5D" />
-      <div className="action-buttons" aria-label="Ações de Rick">
-        <button type="button" className="action-button action-punch" aria-label="Soco ou ataque" onPointerDown={event => { event.preventDefault(); actionRefs.current.punch(); }}>SOCO</button>
-        <button type="button" className="action-button action-grab" aria-label="Agarrar e arremessar" onPointerDown={event => { event.preventDefault(); actionRefs.current.grab(); }}>AGARRÃO</button>
-        <button type="button" className="action-button action-jump" aria-label="Pular" onPointerDown={event => { event.preventDefault(); actionRefs.current.jump(); }}>PULO</button>
-      </div>
-      <div
-        ref={joystickRef}
-        className="virtual-joystick"
-        role="application"
-        aria-label="Joystick virtual para movimentar Rick"
-        onPointerDown={event => {
-          event.preventDefault();
-          joystickInput.current.pointerId = event.pointerId;
-          event.currentTarget.setPointerCapture(event.pointerId);
-          updateJoystick(event);
-        }}
-        onPointerMove={event => {
-          if (joystickInput.current.pointerId === event.pointerId) updateJoystick(event);
-        }}
-        onPointerUp={releaseJoystick}
-        onPointerCancel={releaseJoystick}
-        onLostPointerCapture={() => {
-          joystickInput.current = { x: 0, y: 0, pointerId: -1 };
-          setJoystickKnob({ x: 0, y: 0 });
-        }}
-      >
-        <span className="virtual-joystick-ring" />
-        <span className="virtual-joystick-knob" style={{ transform: "translate(calc(-50% + " + joystickKnob.x + "px), calc(-50% + " + joystickKnob.y + "px))" }} />
-        <span className="virtual-joystick-label">MOVE</span>
-      </div>
+export default function GameView({onScore,onKill,paused,onStageChange}:Props) {
+  const joystickRef=useRef<HTMLDivElement>(null);
+  const joystickInput=useRef({x:0,y:0,pointerId:-1});
+  const [knob,setKnob]=useState({x:0,y:0});
+  const controls=useRef<WorldControls>({horizontal:0,depth:0,attack:false,grab:false,jump:false,pickup:false});
+  const callbacks=useRef({onScore,onKill,onStageChange});callbacks.current={onScore,onKill,onStageChange};
+  const pausedRef=useRef(paused);pausedRef.current=paused;
+  const updateJoystick=(event:ReactPointerEvent<HTMLDivElement>)=>{const el=joystickRef.current;if(!el)return;const r=el.getBoundingClientRect();const dx=event.clientX-(r.left+r.width/2),dy=event.clientY-(r.top+r.height/2),radius=r.width*0.34,d=Math.hypot(dx,dy),scale=d>radius?radius/d:1;const x=dx*scale,y=dy*scale;joystickInput.current.x=x/radius;joystickInput.current.y=y/radius;setKnob({x,y});};
+  const releaseJoystick=(event:ReactPointerEvent<HTMLDivElement>)=>{if(joystickInput.current.pointerId!==event.pointerId)return;joystickInput.current={x:0,y:0,pointerId:-1};setKnob({x:0,y:0});if(joystickRef.current?.hasPointerCapture(event.pointerId))joystickRef.current.releasePointerCapture(event.pointerId);};
+  useEffect(()=>{const interval=window.setInterval(()=>{const c=controls.current;c.horizontal=joystickInput.current.x;c.depth=joystickInput.current.y;},16);return()=>window.clearInterval(interval);},[]);
+  const setAction=(key:"attack"|"grab"|"jump",value:boolean)=>{controls.current[key]=value;};
+  const press=(key:"attack"|"grab"|"jump")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,true);};
+  const release=(key:"attack"|"grab"|"jump")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,false);};
+  return <div className="game-viewport">
+    <Canvas className="game-canvas" shadows dpr={[1,1.7]} orthographic camera={{position:[-14,3.6,-18],zoom:80,near:0.1,far:100}}>
+      <World onScore={onScore} onKill={onKill} paused={paused} onStageChange={onStageChange} controls={controls}/>
+    </Canvas>
+    <div className="action-buttons" aria-label="Ações de Rick">
+      <button type="button" className="action-button action-punch" aria-label="Soco ou ataque" onPointerDown={press("attack")} onPointerUp={release("attack")} onPointerCancel={release("attack")} onPointerLeave={release("attack")}>SOCO</button>
+      <button type="button" className="action-button action-grab" aria-label="Agarrar e arremessar" onPointerDown={press("grab")} onPointerUp={release("grab")} onPointerCancel={release("grab")} onPointerLeave={release("grab")}>AGARRÃO</button>
+      <button type="button" className="action-button action-jump" aria-label="Pular" onPointerDown={press("jump")} onPointerUp={release("jump")} onPointerCancel={release("jump")} onPointerLeave={release("jump")}>PULO</button>
     </div>
-  );
+    <div ref={joystickRef} className="virtual-joystick" role="application" aria-label="Joystick virtual para movimentar Rick"
+      onPointerDown={e=>{e.preventDefault();joystickInput.current.pointerId=e.pointerId;e.currentTarget.setPointerCapture(e.pointerId);updateJoystick(e);}}
+      onPointerMove={e=>{if(joystickInput.current.pointerId===e.pointerId)updateJoystick(e);}}
+      onPointerUp={releaseJoystick} onPointerCancel={releaseJoystick}
+      onLostPointerCapture={()=>{joystickInput.current={x:0,y:0,pointerId:-1};setKnob({x:0,y:0});}}>
+      <span className="virtual-joystick-ring"/><span className="virtual-joystick-knob" style={{transform:"translate(calc(-50% + "+knob.x+"px), calc(-50% + "+knob.y+"px))"}}/><span className="virtual-joystick-label">MOVE</span>
+    </div>
+  </div>;
 }
