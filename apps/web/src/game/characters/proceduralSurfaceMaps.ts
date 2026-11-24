@@ -154,10 +154,12 @@ export function createProceduralSurfaceMaps(
         const pores = hash2D(x, y, 97);
         const porePit = pores < 0.08 ? (0.08 - pores) * 3.5 : 0;
 
-        const sweatMask = THREE.MathUtils.smoothstep(
-          fbm(u * 6 + 3.1, v * 6 + 1.7, 53, 3),
-          0.58,
-          0.82
+        const sweatNoise = fbm(u * 8 + 3.1, v * 8 + 1.7, 53, 4);
+        const sweatMask = THREE.MathUtils.smoothstep(sweatNoise, 0.54, 0.78);
+        const wetBloodMask = THREE.MathUtils.clamp(
+          bloodMask * (0.72 + fbm(u * 19, v * 19, 227, 3) * 0.5),
+          0,
+          1
         );
 
         const baseHeight = THREE.MathUtils.clamp(
@@ -185,9 +187,10 @@ export function createProceduralSurfaceMaps(
           0.45,
           0.92
         );
-        const wetSkinRough = THREE.MathUtils.lerp(drySkinRough, 0.32, sweatMask);
-        const bloodRough = 0.16 + fbm(u * 18, v * 18, 199, 2) * 0.08;
-        roughness = THREE.MathUtils.lerp(wetSkinRough, bloodRough, bloodMask);
+        // Pele continua porosa; somente suor e sangue recebem highlights úmidos.
+        const wetSkinRough = THREE.MathUtils.lerp(drySkinRough, 0.24, sweatMask * 0.72);
+        const bloodRough = 0.11 + fbm(u * 22, v * 22, 199, 3) * 0.07;
+        roughness = THREE.MathUtils.lerp(wetSkinRough, bloodRough, wetBloodMask);
       } else {
         const twillPhase = ((x + y) % 6) / 6;
         const twillRidge = Math.sin(twillPhase * Math.PI * 2) * 0.5 + 0.5;
