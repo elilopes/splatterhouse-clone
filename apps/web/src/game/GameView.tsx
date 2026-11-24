@@ -316,7 +316,20 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     }
   },[camera]);
 
-  const targetWallZ = (x:number) => x < -1.5 ? -1.72 : x < 52.5 ? -2.28 : -2.15;
+  const targetWallZ = (x:number) => {
+    if(phase===2)return -2.18; // interior back wall
+    if(x < -1.5)return -1.72; // fleshy outer wall
+    if(x < 52.5){
+      // Match the nearest foreground tree trunk so the monster sticks to wood,
+      // rather than stopping in front of an arbitrary invisible plane.
+      const treeIndex=THREE.MathUtils.clamp(Math.round((x+1.3)/1.5),0,35);
+      const treeX=-1.3+treeIndex*1.5+(treeIndex%2===0?0.14:-0.18);
+      const treeZ=-2.35-(treeIndex%3)*0.72;
+      const treeRadius=0.36+(treeIndex%3)*0.06;
+      return Math.abs(x-treeX)<1.05?treeZ+treeRadius+0.05:-2.28;
+    }
+    return -2.15; // mansion facade
+  };
 
   const spawnGore=(x:number,y:number,z:number,count:number,spread=4.2,skullCount=0)=>{
     for(let i=0;i<count;i++){
