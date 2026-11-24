@@ -202,7 +202,7 @@ function MansionRoom({player}:{player:React.RefObject<THREE.Group|null>}) {
   const wallOpacity=useRef(1);
   useFrame(()=>{
     const playerZ=player.current?.position.z??0;
-    const fade=THREE.MathUtils.smoothstep(playerZ,10,19);
+    const fade=THREE.MathUtils.smoothstep(playerZ,17,20.2);
     const nextOpacity=THREE.MathUtils.lerp(1,0.16,fade);
     if(Math.abs(nextOpacity-wallOpacity.current)<0.008)return;
     wallOpacity.current=nextOpacity;
@@ -220,7 +220,7 @@ function MansionRoom({player}:{player:React.RefObject<THREE.Group|null>}) {
   });
   return <group>
     {/* Broad stone-and-wood floor: the playable room extends well beyond the camera view. */}
-    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.08,1]} receiveShadow>
+    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.08,4.5]} receiveShadow>
       <planeGeometry args={[34,45]}/><meshStandardMaterial color="#302720" roughness={0.94}/>
     </mesh>
     {Array.from({length:13},(_,i)=><mesh key={"floor-seam-"+i} rotation={[-Math.PI/2,0,0]} position={[-15.5+i*2.58,0,4.5]}>
