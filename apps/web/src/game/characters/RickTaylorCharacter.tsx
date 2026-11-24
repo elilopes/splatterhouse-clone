@@ -280,7 +280,7 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
         {ellipsoid(sphere, materials.boot, [0,-0.82,-0.09], [0.18,0.13,0.29])}
         {ellipsoid(sphere, materials.bootSole, [0,-0.925,-0.09], [0.185,0.035,0.295])}
         {[-0.46,-0.51].map((y,i)=><mesh key={i} position={[0,y,-0.185]} rotation={[0,0,i===0?0.1:-0.1]}><boxGeometry args={[0.2,0.012,0.012]}/><meshStandardMaterial color="#91a7c4" roughness={0.88}/></mesh>)}
-        <mesh position={[0,-0.77,-0.29]}><boxGeometry args={[0.11,0.014,0.012]}/><primitive object={materials.seam} attach="material"/></mesh>
+        <mesh position={[0,-0.77,-0.29]}><boxGeometry args={[0.11,0.014,0.012]}/><meshStandardMaterial color="#91a7c4" roughness={0.88}/></mesh>
       </group>
       <group ref={rightLeg} position={[0.18,0.91,0]}>
         {ellipsoid(sphere, materials.denim, [0,-0.20,0], [0.19,0.36,0.22])}
