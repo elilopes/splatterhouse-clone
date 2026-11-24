@@ -684,6 +684,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       if((e.x-px)*attackDirection.current.x+(e.z-(player.current?.position.z??0))*attackDirection.current.z<0)return;
       e.health--;
       e.vx=attackDirection.current.x*3.2;
+      e.vz=attackDirection.current.z*3.2;
       spawnGore(e.x,1.15,e.z,e.health<=0?16:10,4.0);
       if(e.health<=0)kill(e);
     }
@@ -842,8 +843,8 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
         const ease=liftProgress*liftProgress*(3-2*liftProgress);
         const pX=player.current!.position.x;
         const pZ=player.current!.position.z;
-        e.x=THREE.MathUtils.lerp(pX+facing.current*0.78,pX+facing.current*0.92,ease);
-        e.z=THREE.MathUtils.lerp(pZ,pZ-0.08,ease);
+        e.x=THREE.MathUtils.lerp(pX+attackDirection.current.x*0.78,pX+attackDirection.current.x*0.92,ease);
+        e.z=THREE.MathUtils.lerp(pZ+attackDirection.current.z*0.78,pZ+attackDirection.current.z*0.92,ease);
         e.y=0.48+ease*1.38;
         if(group){
           group.position.set(e.x,e.y,e.z);
@@ -854,9 +855,9 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
           e.bodyState="grabThrown";
           e.grabTimer=0;
           // Strong impulse sends the monster behind Rick, away from the direction he faces.
-          e.vx=-facing.current*7.4;
+          e.vx=-attackDirection.current.x*7.4;
           e.vy=5.1;
-          e.vz=(pZ-e.z)*1.2;
+          e.vz=-attackDirection.current.z*7.4+(pZ-e.z)*1.2;
         }
         return;
       }
