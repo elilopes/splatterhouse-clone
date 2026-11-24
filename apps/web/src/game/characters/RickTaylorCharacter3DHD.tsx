@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Environment, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { createProceduralSurfaceMaps } from "./proceduralSurfaceMaps";
+import { WebGPURenderer } from "three/webgpu";
 
 export type RickWeaponId = "pipe" | "machete" | "shotgun";
 
@@ -1464,6 +1465,37 @@ function RendererInitHelper({ onReady }: { onReady: (mode: "WebGPU" | "WebGL") =
   return null;
 }
 
+function createShowcaseRenderer(canvas: HTMLCanvasElement) {
+  return (async () => {
+    const hasWebGPU = typeof navigator !== "undefined" && "gpu" in navigator;
+
+    if (hasWebGPU) {
+      const gpuRenderer = new WebGPURenderer({
+        canvas,
+        antialias: true,
+        powerPreference: "high-performance",
+      });
+      await gpuRenderer.init();
+      gpuRenderer.shadowMap.enabled = true;
+      gpuRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      gpuRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+      gpuRenderer.toneMappingExposure = 1.05;
+      return gpuRenderer;
+    }
+
+    const glRenderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      powerPreference: "high-performance",
+    });
+    glRenderer.shadowMap.enabled = true;
+    glRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    glRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    glRenderer.toneMappingExposure = 1.05;
+    return glRenderer;
+  })();
+}
+
 export default function RickTaylorCharacter3DHD() {
   const [backend, setBackend] = useState<"WebGPU" | "WebGL">("WebGL");
   const [poseMode, setPoseMode] = useState<RickPoseMode>("idle");
@@ -1495,6 +1527,7 @@ export default function RickTaylorCharacter3DHD() {
         shadows
         dpr={[1, 2]}
         camera={{ position: [0, 1.35, 3.2], fov: 42 }}
+        gl={(canvas) => createShowcaseRenderer(canvas) as unknown as THREE.WebGLRenderer}
       >
         <color attach="background" args={["#18181f"]} />
         <RendererInitHelper onReady={setBackend} />
