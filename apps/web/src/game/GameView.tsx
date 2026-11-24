@@ -3,8 +3,12 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import RickTaylorCharacter, { type RickMotion } from "./characters/RickTaylorCharacter";
+import { RickTaylorCharacter3DHDPlayer } from "./characters/RickTaylorCharacter3DHD";
+import { WebGPURenderer } from "three/webgpu";
 
-type Props = { onScore:(points:number)=>void; onKill:()=>void; paused:boolean; onStageChange:(stage:1|2)=>void };
+export type GraphicsQuality = "auto" | "standard" | "high";
+
+type Props = { onScore:(points:number)=>void; onKill:()=>void; paused:boolean; onStageChange:(stage:1|2)=>void; graphicsQuality:GraphicsQuality };
 type WeaponId = "pipe" | "machete" | "shotgun";
 type EnemyKind = "crawler" | "brute" | "spitter";
 type BodyState = "alive" | "wallFlying" | "wallStuck" | "falling" | "fallen" | "macheteFalling" | "macheteMelting" | "grabLift" | "grabThrown" | "grabFallen" | "grabMelting" | "pipeSlam" | "gone";
@@ -60,7 +64,7 @@ const initialPickups: PickupState[] = [
 type WorldControls = {
   horizontal:number; depth:number; attack:boolean; grab:boolean; jump:boolean; pickup:boolean;
 };
-type WorldProps = Props & { controls:React.MutableRefObject<WorldControls> };
+type WorldProps = Omit<Props, "graphicsQuality"> & { controls:React.MutableRefObject<WorldControls>; useHDCharacter:boolean };
 type PipeAttackStyle = "bat" | "overhead";
 type PipeCombo = { steps:PipeAttackStyle[]; elapsed:number; stepIndex:number; hit:boolean };
 const PIPE_STRIKE_DURATION = 0.72;
@@ -437,7 +441,7 @@ function WeaponModel({ id }: {id:WeaponId}) {
   </group>;
 }
 
-function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
+function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:WorldProps) {
   const { camera, size } = useThree();
   const player=useRef<THREE.Group>(null);
   const enemyGroups=useRef<Record<number, THREE.Group|null>>({});
@@ -1267,7 +1271,9 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     <pointLight position={[10,5,3]} intensity={0.45} color="#8d3330"/>
     {phase===1?<Exterior/>:<MansionRoom player={player}/>}
     {phase===1&&<group position={[-24,0,0]}><mesh position={[0,0.02,0]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[0.48,0.56,32]}/><meshBasicMaterial color="#7d342d"/></mesh></group>}
-    <group ref={player}><RickTaylorCharacter motion={motion.current} equippedWeapon={equipped}/></group>
+    <group ref={player}>{useHDCharacter
+      ? <RickTaylorCharacter3DHDPlayer motion={motion.current} equippedWeapon={equipped}/>
+      : <RickTaylorCharacter motion={motion.current} equippedWeapon={equipped}/>}</group>
 
     {bloodPools.current.map(pool=>(
       <mesh key={`pool-${pool.id}`} position={[pool.x,0.022,pool.z]} rotation={[-Math.PI/2,0,0]}>
@@ -1312,7 +1318,26 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   </group>;
 }
 
-export default function GameView({onScore,onKill,paused,onStageChange}:Props) {
+export default function GameView({onScore,onKill,paused,onStageChange,graphicsQuality}:Props) {
+  const [rendererMode,setRendererMode]=useState<"webgpu"|"webgl"|null>(null);
+  useEffect(()=>{
+    let cancelled=false;
+    setRendererMode(null);
+    const resolveRenderer=async()=>{
+      if(graphicsQuality==="standard"){if(!cancelled)setRendererMode("webgl");return;}
+      try{
+        if(typeof navigator==="undefined"||!("gpu" in navigator))throw new Error("WebGPU indisponível");
+        const probe=new WebGPURenderer({antialias:true,powerPreference:"high-performance"});
+        await probe.init();
+        probe.dispose();
+        if(!cancelled)setRendererMode("webgpu");
+      }catch{
+        if(!cancelled)setRendererMode("webgl");
+      }
+    };
+    void resolveRenderer();
+    return ()=>{cancelled=true;};
+  },[graphicsQuality]);
   const joystickRef=useRef<HTMLDivElement>(null);
   const joystickInput=useRef({x:0,y:0,pointerId:-1});
   const [knob,setKnob]=useState({x:0,y:0});
@@ -1323,9 +1348,27 @@ export default function GameView({onScore,onKill,paused,onStageChange}:Props) {
   const press=(key:"attack"|"grab"|"jump"|"pickup")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,true);};
   const release=(key:"attack"|"grab"|"jump"|"pickup")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,false);};
   return <div className="game-viewport">
-    <Canvas className="game-canvas" shadows dpr={[1,1.7]} orthographic camera={{position:[-24,4.6,18],zoom:1,near:0.1,far:100}}>
-      <World onScore={onScore} onKill={onKill} paused={paused} onStageChange={onStageChange} controls={controls}/>
-    </Canvas>
+    {rendererMode===null ? <div className="renderer-loading" role="status">Preparando qualidade gráfica…</div> : (
+      <Canvas key={rendererMode} className="game-canvas" shadows dpr={[1,1.7]} orthographic camera={{position:[-24,4.6,18],zoom:1,near:0.1,far:100}}
+        gl={(canvas)=>{
+          if(rendererMode==="webgpu"){
+            const renderer=new WebGPURenderer({canvas,antialias:true,powerPreference:"high-performance"});
+            return renderer.init().then(()=>{renderer.shadowMap.enabled=true;return renderer;}).catch(()=>{
+              setRendererMode("webgl");
+              const fallback=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:"high-performance"});
+              fallback.shadowMap.enabled=true;
+              fallback.shadowMap.type=THREE.PCFSoftShadowMap;
+              return fallback;
+            });
+          }
+          const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:"high-performance"});
+          renderer.shadowMap.enabled=true;
+          renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+          return renderer;
+        }}>
+        <World onScore={onScore} onKill={onKill} paused={paused} onStageChange={onStageChange} controls={controls} useHDCharacter={rendererMode==="webgpu"}/>
+      </Canvas>
+    )}
     <div className="action-buttons" aria-label="Ações de Rick">
       <button type="button" className="action-button action-punch" aria-label="Soco ou ataque" onPointerDown={press("attack")} onPointerUp={release("attack")} onPointerCancel={release("attack")} onPointerLeave={release("attack")}>SOCO</button>
       <button type="button" className="action-button action-grab" aria-label="Agarrar e arremessar" onPointerDown={press("grab")} onPointerUp={release("grab")} onPointerCancel={release("grab")} onPointerLeave={release("grab")}>AGARRÃO</button>
