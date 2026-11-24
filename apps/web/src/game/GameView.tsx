@@ -218,11 +218,11 @@ function EnemyHeadMesh({ kind }: {kind:EnemyKind}) {
   </group>;
 }
 
-function EnemyModel({ kind, headless=false }: {kind:EnemyKind; headless?:boolean}) {
+function EnemyModel({ kind, headless=false, dissolve=0 }: {kind:EnemyKind; headless?:boolean; dissolve?:number}) {
   const brute=kind==="brute", crawler=kind==="crawler";
   const flesh=brute?"#75513d":kind==="spitter"?"#a05c43":"#873b36";
   return <group>
-    <mesh position={[0,crawler?0.62:0.92,0]} scale={[brute?0.62:crawler?0.55:0.46,crawler?0.36:0.62,0.36]} castShadow><sphereGeometry args={[1,24,18]}/><meshStandardMaterial color={flesh} roughness={0.68}/></mesh>
+    <mesh position={[0,crawler?0.62:0.92,0]} scale={[brute?0.62:crawler?0.55:0.46,crawler?0.36:0.62,0.36]} castShadow><sphereGeometry args={[1,24,18]}/><meshStandardMaterial color={flesh} roughness={0.68} transparent={dissolve>0} opacity={1-dissolve}/></mesh>
     {!headless ? (
       <group position={[0,crawler?1.05:1.65,0.04]}>
         <EnemyHeadMesh kind={kind}/>
@@ -234,8 +234,8 @@ function EnemyModel({ kind, headless=false }: {kind:EnemyKind; headless?:boolean
       </mesh>
     )}
     {[-1,1].map(side=><group key={side}>
-      <mesh position={[side*(brute?0.58:0.47),crawler?0.56:0.9,0]} rotation={[0,0,side*0.55]}><capsuleGeometry args={[brute?0.19:0.13,0.55,6,12]}/><meshStandardMaterial color={flesh}/></mesh>
-      <mesh position={[side*0.24,crawler?0.22:0.36,-0.06]} rotation={[0,0,side*0.25]}><capsuleGeometry args={[0.14,0.45,6,12]}/><meshStandardMaterial color={flesh}/></mesh>
+      <mesh position={[side*(brute?0.58:0.47),crawler?0.56:0.9,0]} rotation={[0,0,side*0.55]}><capsuleGeometry args={[brute?0.19:0.13,0.55,6,12]}/><meshStandardMaterial color={flesh} transparent={dissolve>0} opacity={1-dissolve}/></mesh>
+      <mesh position={[side*0.24,crawler?0.22:0.36,-0.06]} rotation={[0,0,side*0.25]}><capsuleGeometry args={[0.14,0.45,6,12]}/><meshStandardMaterial color={flesh} transparent={dissolve>0} opacity={1-dissolve}/></mesh>
     </group>)}
     {brute&&Array.from({length:5},(_,i)=><mesh key={i} position={[-0.36+i*0.18,1.62,-0.1]} rotation={[0,0,-0.25]}><coneGeometry args={[0.12,0.48,7]}/><meshStandardMaterial color="#49332d"/></mesh>)}
     {kind==="spitter"&&<mesh position={[0.28,1.05,0.1]} scale={[0.28,0.45,0.27]}><sphereGeometry args={[1,20,16]}/><meshStandardMaterial color="#b46b4c" roughness={0.35}/></mesh>}
