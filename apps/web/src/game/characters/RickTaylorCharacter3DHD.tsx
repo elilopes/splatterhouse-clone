@@ -292,23 +292,61 @@ function createProceduralPBRMaps() {
   const maskBumpCanvas = document.createElement("canvas");
   maskBumpCanvas.width = maskBumpCanvas.height = size;
   const mbCtx = maskBumpCanvas.getContext("2d")!;
+  const maskRoughCanvas = document.createElement("canvas");
+  maskRoughCanvas.width = maskRoughCanvas.height = size;
+  const mrCtx = maskRoughCanvas.getContext("2d")!;
 
-  mCtx.fillStyle = "#f2efe6";
+  // Marfim envelhecido com variação mineral, mantendo a máscara predominantemente fosca.
+  const boneGradient = mCtx.createLinearGradient(0, 0, size, size);
+  boneGradient.addColorStop(0, "#c8bda8");
+  boneGradient.addColorStop(0.42, "#eee6d5");
+  boneGradient.addColorStop(0.72, "#b9ad98");
+  boneGradient.addColorStop(1, "#e4d9c5");
+  mCtx.fillStyle = boneGradient;
   mCtx.fillRect(0, 0, size, size);
   mbCtx.fillStyle = "rgb(128,128,128)";
   mbCtx.fillRect(0, 0, size, size);
+  mrCtx.fillStyle = "rgb(218,218,218)";
+  mrCtx.fillRect(0, 0, size, size);
 
-  for (let b = 0; b < 900; b++) {
+  for (let b = 0; b < 1500; b++) {
     const bx = deterministicNoise(b * 61.1) * size;
     const by = deterministicNoise(b * 67.7) * size;
-    const br = 2 + deterministicNoise(b * 71.9) * 18;
-    mCtx.fillStyle = b % 2 === 0 ? "rgba(185,175,155,0.12)" : "rgba(255,252,245,0.14)";
+    const br = 2 + deterministicNoise(b * 71.9) * 22;
+    const stain = b % 3 === 0;
+    mCtx.fillStyle = stain ? "rgba(75,54,39,0.22)" : "rgba(255,249,231,0.19)";
     mCtx.beginPath();
     mCtx.arc(bx, by, br, 0, Math.PI * 2);
     mCtx.fill();
 
-    mbCtx.fillStyle = b % 2 === 0 ? "rgba(165,165,165,0.2)" : "rgba(95,95,95,0.2)";
-    mbCtx.fillRect(bx, by, br * 0.6, br * 0.6);
+    mbCtx.fillStyle = stain ? "rgba(72,72,72,0.34)" : "rgba(184,184,184,0.3)";
+    mbCtx.beginPath();
+    mbCtx.arc(bx, by, br * 0.82, 0, Math.PI * 2);
+    mbCtx.fill();
+    mrCtx.fillStyle = stain ? "rgba(95,95,95,0.42)" : "rgba(235,235,235,0.22)";
+    mrCtx.beginPath();
+    mrCtx.arc(bx, by, br * 0.72, 0, Math.PI * 2);
+    mrCtx.fill();
+  }
+
+  // Fissuras finas e marcas de desgaste ósseo, com resposta especular restrita.
+  for (let crack = 0; crack < 46; crack++) {
+    let x = deterministicNoise(crack * 83.1) * size;
+    let y = deterministicNoise(crack * 89.7) * size;
+    mCtx.strokeStyle = "rgba(66,48,37,0.34)";
+    mCtx.lineWidth = 1 + deterministicNoise(crack * 97.3) * 2.2;
+    mbCtx.strokeStyle = "rgba(62,62,62,0.58)";
+    mbCtx.lineWidth = mCtx.lineWidth * 1.8;
+    mrCtx.strokeStyle = "rgba(225,225,225,0.35)";
+    mrCtx.lineWidth = 2;
+    mCtx.beginPath(); mbCtx.beginPath(); mrCtx.beginPath();
+    mCtx.moveTo(x,y); mbCtx.moveTo(x,y); mrCtx.moveTo(x,y);
+    for(let step=0;step<7;step++){
+      x += (deterministicNoise(crack*101+step*3)-0.5)*size*0.035;
+      y += (deterministicNoise(crack*107+step*5)-0.5)*size*0.035;
+      mCtx.lineTo(x,y); mbCtx.lineTo(x,y); mrCtx.lineTo(x,y);
+    }
+    mCtx.stroke(); mbCtx.stroke(); mrCtx.stroke();
   }
 
   const maskMap = new THREE.CanvasTexture(maskCanvas);
@@ -317,6 +355,8 @@ function createProceduralPBRMaps() {
 
   const maskBumpMap = new THREE.CanvasTexture(maskBumpCanvas);
   maskBumpMap.wrapS = maskBumpMap.wrapT = THREE.RepeatWrapping;
+  const maskRoughnessMap = new THREE.CanvasTexture(maskRoughCanvas);
+  maskRoughnessMap.wrapS = maskRoughnessMap.wrapT = THREE.RepeatWrapping;
 
   const toonCanvas = document.createElement("canvas");
   toonCanvas.width = 4;
@@ -342,6 +382,7 @@ function createProceduralPBRMaps() {
     jeansBumpMap,
     maskMap,
     maskBumpMap,
+    maskRoughnessMap,
     gradientMap,
   };
 }
@@ -879,10 +920,18 @@ function createTerrorMaskGeometry() {
     const y = THREE.MathUtils.lerp(-0.29, 0.31, v);
     const vNorm = THREE.MathUtils.clamp((y + 0.29) / 0.6, 0, 1);
 
-    const jawTaper = smoothstep(0.0, 0.46, vNorm);
-    const domeTaper = Math.sin(Math.pow(vNorm, 0.78) * Math.PI);
-    const rx = THREE.MathUtils.lerp(0.18, 0.325, jawTaper) * (0.68 + 0.32 * domeTaper);
-    const rz = THREE.MathUtils.lerp(0.16, 0.27, jawTaper) * (0.62 + 0.38 * domeTaper);
+    // Silhueta craniana menos oval: têmporas largas, zigomáticos presentes
+    // e mandíbula com largura sustentada até o mento.
+    const jawTaper = smoothstep(0.0, 0.34, vNorm);
+    const domeTaper = Math.sin(Math.pow(vNorm, 0.72) * Math.PI);
+    const temporalWidth = Math.exp(-Math.pow((vNorm - 0.76) / 0.2, 2));
+    const jawWidth = Math.exp(-Math.pow((vNorm - 0.16) / 0.19, 2));
+    const rx = THREE.MathUtils.lerp(0.225, 0.345, jawTaper)
+      * (0.88 + 0.12 * domeTaper)
+      + temporalWidth * 0.018
+      + jawWidth * 0.012;
+    const rz = THREE.MathUtils.lerp(0.185, 0.285, jawTaper)
+      * (0.86 + 0.14 * domeTaper);
 
     for (let ix = 0; ix <= segs; ix++) {
       const u = ix / segs;
@@ -893,16 +942,16 @@ function createTerrorMaskGeometry() {
 
       const xBase = cosA * rx;
       const brow =
-        Math.exp(-Math.pow((y - 0.14) / 0.045, 2)) *
-        (1 - smoothstep(0.14, 0.26, Math.abs(xBase))) *
+        Math.exp(-Math.pow((y - 0.145) / 0.052, 2)) *
+        (1 - smoothstep(0.16, 0.29, Math.abs(xBase))) *
         front;
       const cheek =
-        Math.exp(-Math.pow((y + 0.01) / 0.05, 2)) *
-        Math.exp(-Math.pow((Math.abs(xBase) - 0.18) / 0.06, 2)) *
+        Math.exp(-Math.pow((y + 0.005) / 0.058, 2)) *
+        Math.exp(-Math.pow((Math.abs(xBase) - 0.205) / 0.065, 2)) *
         front;
       const eyeSocket =
-        Math.exp(-Math.pow((y - 0.07) / 0.048, 2)) *
-        Math.exp(-Math.pow((Math.abs(xBase) - 0.115) / 0.055, 2)) *
+        Math.exp(-Math.pow((y - 0.065) / 0.055, 2)) *
+        Math.exp(-Math.pow((Math.abs(xBase) - 0.125) / 0.058, 2)) *
         front;
       const noseSocket =
         Math.exp(-Math.pow((y + 0.05) / 0.055, 2)) *
@@ -918,14 +967,15 @@ function createTerrorMaskGeometry() {
         (1 - smoothstep(0.1, 0.15, Math.abs(xBase))) *
         front;
 
-      const zOffset = -0.045 * front;
+      // Máscara projetada para a frente; volumes ósseos e cavidades profundas.
+      const zOffset = -0.068 * front;
       const relief =
-        brow * 0.028 +
-        cheek * 0.024 -
-        eyeSocket * 0.065 -
-        noseSocket * 0.052 -
-        mouthSlot * 0.05 +
-        teethRidge * 0.024;
+        brow * 0.052 +
+        cheek * 0.043 -
+        eyeSocket * 0.092 -
+        noseSocket * 0.072 -
+        mouthSlot * 0.065 +
+        teethRidge * 0.034;
       const z = sinA * rz + zOffset - relief * front;
 
       positions.push(xBase, y, z);
@@ -1066,7 +1116,7 @@ function HeldWeaponMesh({
 export function RickTaylorRig({
   motion,
   equippedWeapon = null,
-  bloodIntensity = 0.85,
+  bloodIntensity = 1.0,
 }: RickTaylorCharacterProps) {
   const root = useRef<THREE.Group>(null);
   const headMount = useRef<THREE.Group>(null);
@@ -1083,11 +1133,11 @@ export function RickTaylorRig({
 
   const canvasMaps = useMemo(() => createProceduralPBRMaps(), []);
   const skinSurfaceMaps = useMemo(
-    () => createProceduralSurfaceMaps("skin", 512, bloodIntensity),
+    () => createProceduralSurfaceMaps("skin", 1024, bloodIntensity),
     [bloodIntensity]
   );
   const denimSurfaceMaps = useMemo(
-    () => createProceduralSurfaceMaps("denim", 512, bloodIntensity * 0.75),
+    () => createProceduralSurfaceMaps("denim", 1024, bloodIntensity * 0.75),
     [bloodIntensity]
   );
 
@@ -1158,8 +1208,9 @@ export function RickTaylorRig({
     const mMat = new THREE.MeshStandardMaterial({
       map: canvasMaps.maskMap,
       bumpMap: canvasMaps.maskBumpMap,
-      bumpScale: 0.012,
-      roughness: 0.58,
+      bumpScale: 0.026,
+      roughnessMap: canvasMaps.maskRoughnessMap,
+      roughness: 0.78,
       metalness: 0.02,
       vertexColors: true,
     });
