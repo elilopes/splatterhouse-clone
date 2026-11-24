@@ -126,6 +126,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const cameraTarget=useRef(new THREE.Vector3(-14,1.9,0));
   const [,setEnemyVersion]=useState(0);
   const lastActions=useRef({attack:false,grab:false,jump:false,pickup:false});
+  const keys=useRef(new Set<string>());
   useEffect(()=>{camera.position.set(-14,3.6,-18);camera.lookAt(-14,1.8,0);},[camera]);
   const kill=(enemy:EnemyState)=>{if(!enemy.alive)return;enemy.alive=false;onKill();onScore(100);setEnemyVersion(v=>v+1);};
   const nearest=(range:number)=>{let result:EnemyState|null=null;let best=range;for(const e of enemies.current){if(!e.alive)continue;const d=Math.hypot(e.x-(player.current?.position.x??0),e.z-(player.current?.position.z??0));if(d<best){best=d;result=e;}}return result;};
@@ -134,8 +135,9 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const doGrab=()=>{if(grabCooldown.current>0||!player.current)return;grabCooldown.current=1.15;const e=nearest(1.8);motion.current.grabTime=0.46;if(!e)return;e.knocked=1.25;e.fall=-facing.current;e.vx=-facing.current*5.8;e.vz=(e.z-player.current.position.z)*1.8;};
   const doJump=()=>{if(!grounded.current)return;grounded.current=false;jumpVelocity.current=6.2;};
   useEffect(()=>{
-    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="j")doAttack();if(k==="k")doGrab();if(k===" "||k==="l")doJump();if(k==="e")doPickup();};
-    window.addEventListener("keydown",down);return()=>window.removeEventListener("keydown",down);
+    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();keys.current.add(k);if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="j")doAttack();if(k==="k")doGrab();if(k===" "||k==="l")doJump();if(k==="e")doPickup();};
+    const up=(e:KeyboardEvent)=>keys.current.delete(e.key.toLowerCase());
+    window.addEventListener("keydown",down);window.addEventListener("keyup",up);return()=>{window.removeEventListener("keydown",down);window.removeEventListener("keyup",up);};
   });
   useEffect(()=>{controls.current.attack=doAttack;controls.current.grab=doGrab;controls.current.jump=doJump;controls.current.pickup=doPickup;});
   useFrame((_,dt)=>{
@@ -144,7 +146,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     if(c.attack&&!prior.attack)doAttack();if(c.grab&&!prior.grab)doGrab();if(c.jump&&!prior.jump)doJump();if(c.pickup&&!prior.pickup)doPickup();
     lastActions.current={attack:c.attack,grab:c.grab,jump:c.jump,pickup:c.pickup};
     attackCooldown.current=Math.max(0,attackCooldown.current-dt);grabCooldown.current=Math.max(0,grabCooldown.current-dt);
-    const dx=THREE.MathUtils.clamp(c.horizontal,-1,1),dz=THREE.MathUtils.clamp(c.depth,-1,1);
+    const keyH=Number(keys.current.has("d")||keys.current.has("arrowright"))-Number(keys.current.has("a")||keys.current.has("arrowleft"));const keyD=Number(keys.current.has("s")||keys.current.has("arrowdown"))-Number(keys.current.has("w")||keys.current.has("arrowup"));const dx=THREE.MathUtils.clamp(c.horizontal+keyH,-1,1),dz=THREE.MathUtils.clamp(c.depth+keyD,-1,1);
     const moving=Math.abs(dx)+Math.abs(dz)>0.08;motion.current.moving=moving;
     if(moving){const v=new THREE.Vector3(dx,0,dz).normalize();player.current.position.x+=v.x*4.25*dt;player.current.position.z=THREE.MathUtils.clamp(player.current.position.z+v.z*2.1*dt,-1.35,1.35);if(Math.abs(dx)>0.05)facing.current=dx>0?1:-1;player.current.rotation.y=facing.current>0?-Math.PI/2:Math.PI/2;}
     if(!grounded.current){motion.current.jumpHeight=Math.max(0,motion.current.jumpHeight+jumpVelocity.current*dt);jumpVelocity.current-=16.5*dt;if(motion.current.jumpHeight<=0){motion.current.jumpHeight=0;jumpVelocity.current=0;grounded.current=true;}}
