@@ -248,7 +248,7 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
     const damageEnemy=(enemy:Enemy,kind:"hands"|"pipe"|"machete"|"shotgun"|"throw")=>{
       if(!enemy.alive)return;
       if(kind==="pipe"){
-        enemy.health=0;enemy.velocity.x=facing*9;enemy.root.position.x+=facing*0.55;
+        enemy.health=1;enemy.velocity.x=facing*20;enemy.root.position.x+=facing*0.55;
         enemy.body.scaling.y=0.9;enemy.root.position.y=0;
       } else if(kind==="machete"){
         enemy.health=0;
@@ -327,7 +327,7 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
           enemy.attackCooldown=Math.max(0,enemy.attackCooldown-dt);
           if(Math.abs(enemy.velocity.x)>0.08){
             enemy.root.position.x+=enemy.velocity.x*dt;enemy.root.position.z+=enemy.velocity.z*dt;
-            enemy.velocity.scaleInPlace(Math.max(0,1-dt*2.8));
+            enemy.velocity.scaleInPlace(Math.max(0,1-dt*(equipped==="pipe"?1.5:2.8)));
           } else if(phase===1){
             const dx=player.position.x-enemy.root.position.x;
             if(Math.abs(dx)>0.85)enemy.root.position.x+=Math.sign(dx)*1.15*dt;
@@ -365,7 +365,7 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
           camera.position.x+=(player.position.x-camera.position.x)*Math.min(1,dt*3.8);
           camera.setTarget(new Vector3(camera.position.x,2.0,0));
           if(player.position.x>=exterior.doorX&&!transitionLock){
-            transitionLock=true;phase=2;exteriorMeshes.forEach(mesh=>mesh.setEnabled(false));buildRoom();
+            transitionLock=true;phase=2;exteriorMeshes.forEach(mesh=>mesh.setEnabled(false));enemies.forEach(enemy=>enemy.root.setEnabled(false));pickups.forEach(pickup=>pickup.root.setEnabled(false));buildRoom();
             player.position.set(-7.3,0,0);camera.position.set(-7.3,3.3,-16);camera.setTarget(new Vector3(-7.3,2,0));
             callbacks.current.onStageChange(2);
           }
