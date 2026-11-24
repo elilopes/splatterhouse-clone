@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import GameView from "./game/GameView";
+import GameView, { type GraphicsQuality } from "./game/GameView";
 import { loadLocalProgress, saveLocalProgress } from "./game/save";
 import type { GameProgress } from "./game/types";
 import { auth, cloudSave, firebaseReady, signInGoogle, signInGuest } from "./firebase/client";
@@ -12,6 +12,16 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("title");
   const [currentPhase, setCurrentPhase] = useState<1 | 2>(1);
   const [message, setMessage] = useState("Modo visitante — progresso salvo neste dispositivo");
+  const [graphicsQuality,setGraphicsQuality] = useState<GraphicsQuality>(() => {
+    try {
+      const saved=localStorage.getItem("splatterhouse-graphics-quality");
+      return saved==="standard"||saved==="high"||saved==="auto"?saved:"auto";
+    } catch { return "auto"; }
+  });
+
+  useEffect(()=>{
+    try { localStorage.setItem("splatterhouse-graphics-quality",graphicsQuality); } catch { /* armazenamento opcional */ }
+  },[graphicsQuality]);
 
   useEffect(() => saveLocalProgress(progress), [progress]);
 
@@ -34,6 +44,15 @@ export default function App() {
             <span className="eyebrow">UM PESADELO ESTÁ APENAS COMEÇANDO</span>
             <h1>SPLATTERHOUSE</h1>
             <p className="title-subtitle">A MANSÃO NÃO DEIXARÁ VOCÊ SAIR.</p>
+            <div className="graphics-settings">
+              <label htmlFor="graphics-quality">Qualidade gráfica</label>
+              <select id="graphics-quality" value={graphicsQuality} onChange={event=>setGraphicsQuality(event.target.value as GraphicsQuality)}>
+                <option value="auto">Automática — melhor compatível</option>
+                <option value="standard">Padrão — Rick convencional / WebGL</option>
+                <option value="high">Alta — Rick HD / WebGPU</option>
+              </select>
+              <small>Alta usa o modo padrão automaticamente se WebGPU não estiver disponível.</small>
+            </div>
             <button className="start-button" onClick={startGame}>INICIAR JOGO</button>
             <div className="title-account">
               <span>{message}</span>
@@ -53,7 +72,7 @@ export default function App() {
           </header>
           <section className="game-layout">
             <div className="game-frame">
-              <GameView paused={paused} onScore={points=>setProgress(p=>({...p,totalScore:p.totalScore+points}))} onKill={()=>setProgress(p=>({...p,totalKills:p.totalKills+1}))} onStageChange={stage=>{setCurrentPhase(stage);setProgress(p=>({...p,currentStage:stage,unlockedStages:[...new Set([...p.unlockedStages,stage])],checkpoint:stage===1?"mansao-exterior-start":"mansao-interior-entry"}));}} />
+              <GameView graphicsQuality={graphicsQuality} paused={paused} onScore={points=>setProgress(p=>({...p,totalScore:p.totalScore+points}))} onKill={()=>setProgress(p=>({...p,totalKills:p.totalKills+1}))} onStageChange={stage=>{setCurrentPhase(stage);setProgress(p=>({...p,currentStage:stage,unlockedStages:[...new Set([...p.unlockedStages,stage])],checkpoint:stage===1?"mansao-exterior-start":"mansao-interior-entry"}));}} />
               <div className="hud">
                 <div><small>FASE</small><strong>0{currentPhase}/02</strong></div>
                 <div><small>LOCAL</small><strong>{currentPhase===1?"TERRENO":"MANSÃO"}</strong></div>
