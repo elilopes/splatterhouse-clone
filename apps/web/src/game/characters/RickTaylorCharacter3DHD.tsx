@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Environment, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
+import { createProceduralSurfaceMaps } from "./proceduralSurfaceMaps";
 
 export type RickWeaponId = "pipe" | "machete" | "shotgun";
 
@@ -27,9 +28,9 @@ export type RickMotion = {
 type CharacterProps = {
   motion: RickMotion;
   equippedWeapon?: RickWeaponId | null;
+  bloodIntensity?: number;
 };
 
-// Reusable matrix scratch objects to avoid per-frame allocations
 const _matHips = new THREE.Matrix4();
 const _matSpine = new THREE.Matrix4();
 const _matChest = new THREE.Matrix4();
@@ -44,7 +45,6 @@ const _matLKnee = new THREE.Matrix4();
 const _matRThigh = new THREE.Matrix4();
 const _matRKnee = new THREE.Matrix4();
 
-// Bone indices matching the 13-bone skeleton
 const BONE_HIPS = 0;
 const BONE_SPINE = 1;
 const BONE_CHEST = 2;
@@ -132,20 +132,15 @@ function finalizeGeometry(
   try {
     geometry.computeTangents();
   } catch {
-    // Fallback gracefully if tangent generation isn't supported for an index configuration
+    // Fallback se tangentes não forem aplicáveis
   }
   geometry.computeBoundingSphere();
   return geometry;
 }
 
-/**
- * Generates high-detail 1024x1024 procedural PBR maps (albedo, bump/normal, roughness, AO)
- * for skin, denim, bone mask, and leather.
- */
 function createProceduralPBRMaps() {
   const size = 1024;
 
-  // 1) Skin Albedo + Roughness + Bump
   const skinAlbedoCanvas = document.createElement("canvas");
   skinAlbedoCanvas.width = skinAlbedoCanvas.height = size;
   const sCtx = skinAlbedoCanvas.getContext("2d")!;
@@ -165,7 +160,6 @@ function createProceduralPBRMaps() {
   sbCtx.fillStyle = "rgb(128, 128, 128)";
   sbCtx.fillRect(0, 0, size, size);
 
-  // Subtle anatomical mottling & muscle grain
   for (let i = 0; i < 420; i++) {
     const nx = deterministicNoise(i * 1.13) * size;
     const ny = deterministicNoise(i * 2.37) * size;
@@ -183,7 +177,6 @@ function createProceduralPBRMaps() {
     sCtx.fillRect(nx - rad, ny - rad, rad * 2, rad * 2);
   }
 
-  // Subcutaneous veins & micro-capillaries
   sCtx.lineCap = "round";
   srCtx.lineCap = "round";
   sbCtx.lineCap = "round";
@@ -211,7 +204,6 @@ function createProceduralPBRMaps() {
     sbCtx.stroke();
   }
 
-  // Skin pores & micro-scars in bump & roughness
   for (let p = 0; p < 3600; p++) {
     const px = deterministicNoise(p * 41.3) * size;
     const py = deterministicNoise(p * 47.9) * size;
@@ -235,7 +227,6 @@ function createProceduralPBRMaps() {
   const skinBumpMap = new THREE.CanvasTexture(skinBumpCanvas);
   skinBumpMap.wrapS = skinBumpMap.wrapT = THREE.RepeatWrapping;
 
-  // 2) Denim Jeans Albedo + Roughness + Bump
   const jeansCanvas = document.createElement("canvas");
   jeansCanvas.width = jeansCanvas.height = size;
   const jCtx = jeansCanvas.getContext("2d")!;
@@ -249,7 +240,6 @@ function createProceduralPBRMaps() {
   jbCtx.fillStyle = "rgb(128,128,128)";
   jbCtx.fillRect(0, 0, size, size);
 
-  // Diagonal denim twill weave
   jCtx.lineWidth = 2;
   jbCtx.lineWidth = 2;
   for (let i = -size; i < size * 2; i += 6) {
@@ -272,7 +262,6 @@ function createProceduralPBRMaps() {
     jbCtx.stroke();
   }
 
-  // Worn highlights & creases
   for (let w = 0; w < 24; w++) {
     const wx = deterministicNoise(w * 19.3) * size;
     const wy = deterministicNoise(w * 29.7) * size;
@@ -291,7 +280,6 @@ function createProceduralPBRMaps() {
   const jeansBumpMap = new THREE.CanvasTexture(jeansBumpCanvas);
   jeansBumpMap.wrapS = jeansBumpMap.wrapT = THREE.RepeatWrapping;
 
-  // 3) Bone / Terror Mask Albedo & Bump
   const maskCanvas = document.createElement("canvas");
   maskCanvas.width = maskCanvas.height = size;
   const mCtx = maskCanvas.getContext("2d")!;
@@ -325,7 +313,6 @@ function createProceduralPBRMaps() {
   const maskBumpMap = new THREE.CanvasTexture(maskBumpCanvas);
   maskBumpMap.wrapS = maskBumpMap.wrapT = THREE.RepeatWrapping;
 
-  // 4) Toon / Cel-Shading Gradient Map for crisp horror comic shading
   const toonCanvas = document.createElement("canvas");
   toonCanvas.width = 4;
   toonCanvas.height = 1;
@@ -354,10 +341,6 @@ function createProceduralPBRMaps() {
   };
 }
 
-/**
- * Continuous skinned torso, clavicles, trapezius, neck, and undulating upper arms.
- * Uses dual/triple bone skinning weights and morph targets for breathing + arm flexing.
- */
 function createUpperBodySkinnedGeometry() {
   const positions: number[] = [];
   const uvs: number[] = [];
@@ -413,7 +396,6 @@ function createUpperBodySkinnedGeometry() {
       const front = Math.max(0, -sinA);
       const back = Math.max(0, sinA);
 
-      // Pectoralis major + sternum cleft + lower pec undercut
       const pecBand = Math.exp(-Math.pow((yLocal - 0.57) / 0.14, 2));
       const sternumGroove = Math.exp(-Math.pow(cosA / 0.16, 2)) * front * pecBand;
       const pecMass =
@@ -426,7 +408,6 @@ function createUpperBodySkinnedGeometry() {
         front *
         Math.pow(Math.abs(cosA), 0.8);
 
-      // Rectus abdominis (6-pack) + linea alba + obliques + serratus
       const absCol = Math.exp(-Math.pow((Math.abs(cosA) - 0.24) / 0.15, 2)) * front;
       const absRow =
         Math.exp(-Math.pow((yLocal - 0.31) / 0.055, 2)) +
@@ -446,7 +427,6 @@ function createUpperBodySkinnedGeometry() {
         (0.5 + 0.5 * Math.sin(yLocal * 95)) *
         front;
 
-      // Latissimus dorsi & spinal furrow on back
       const lats =
         Math.exp(-Math.pow((yLocal - 0.48) / 0.18, 2)) *
         Math.pow(Math.abs(cosA), 1.4) *
@@ -457,7 +437,6 @@ function createUpperBodySkinnedGeometry() {
         smoothstep(-0.15, 0.72, yLocal) *
         (1 - smoothstep(0.72, 0.92, yLocal));
 
-      // Clavicle & SCM neck cords
       const clavicle =
         Math.exp(-Math.pow((yLocal - 0.76) / 0.035, 2)) *
         front *
@@ -486,7 +465,6 @@ function createUpperBodySkinnedGeometry() {
       positions.push(x, yRoot, z);
       uvs.push(u * 2.2, v * 2.2);
 
-      // Cavity AO + blood smears baked into vertex color
       const cavity =
         sternumGroove * 0.18 +
         lineaAlba * 0.14 +
@@ -514,7 +492,6 @@ function createUpperBodySkinnedGeometry() {
       }
       colors.push(rCol, gCol, bCol);
 
-      // Dual/triple bone skinning weights
       let b0 = BONE_CHEST,
         w0 = 1;
       let b1 = BONE_SPINE,
@@ -561,7 +538,6 @@ function createUpperBodySkinnedGeometry() {
       }
       pushSkinWeights(skinIndices, skinWeights, b0, w0, b1, w1, b2, w2, b3, w3);
 
-      // Morph targets: breathing + left/right pectoral/shoulder flex
       const breathBand = Math.exp(-Math.pow((yLocal - 0.52) / 0.24, 2));
       morphBreath.push(
         cosA * breathBand * 0.011,
@@ -577,7 +553,6 @@ function createUpperBodySkinnedGeometry() {
   }
   appendGridIndices(indices, torsoBase, torsoRings, torsoSegs, false);
 
-  // Sculpted Undulating Upper Arms (Left side = -1, Right side = +1)
   const armRings = 54;
   const armSegs = 44;
 
@@ -731,9 +706,6 @@ function createUpperBodySkinnedGeometry() {
   return geometry;
 }
 
-/**
- * Continuous skinned denim trousers (pelvis + thighs + knees + calves + shredded cuff tips).
- */
 function createTrousersSkinnedGeometry() {
   const positions: number[] = [];
   const uvs: number[] = [];
@@ -829,7 +801,6 @@ function createTrousersSkinnedGeometry() {
         const front = Math.max(0, -sinA);
         const back = Math.max(0, sinA);
 
-        // Shredded tattered hem near bottom cuff
         const shredWave =
           smoothstep(0.84, 1.0, t) *
           (Math.sin(angle * 7 + side * 1.4) * 0.018 + Math.cos(angle * 13) * 0.01);
@@ -890,10 +861,6 @@ function createTrousersSkinnedGeometry() {
   return geometry;
 }
 
-/**
- * Contoured Terror Mask faceplate geometry sculpted with brow ridge, cheekbones,
- * sunken orbital sockets, nasal cavity, and fanged skull jaw.
- */
 function createTerrorMaskGeometry() {
   const rings = 42;
   const segs = 44;
@@ -966,7 +933,6 @@ function createTerrorMaskGeometry() {
       let rC = 0.96 - darkCav * 0.85;
       let gC = 0.94 - darkCav * 0.84;
       let bC = 0.88 - darkCav * 0.78;
-
       const jawBlood =
         Math.exp(-(Math.pow((xBase + 0.11) / 0.08, 2) + Math.pow((y + 0.19) / 0.07, 2))) *
         front *
@@ -983,9 +949,6 @@ function createTerrorMaskGeometry() {
   return finalizeGeometry(positions, uvs, indices, colors);
 }
 
-/**
- * Contoured leather combat boot geometry (shaft + ankle + vamp + toe cap).
- */
 function createCombatBootGeometry() {
   const rings = 28;
   const segs = 32;
@@ -1014,6 +977,24 @@ function createCombatBootGeometry() {
   return finalizeGeometry(positions, uvs, indices);
 }
 
+function ellipsoid(
+  geometry: THREE.SphereGeometry,
+  material: THREE.Material,
+  position: [number, number, number],
+  scale: [number, number, number]
+) {
+  return (
+    <mesh
+      geometry={geometry}
+      material={material}
+      position={position}
+      scale={scale}
+      castShadow
+      receiveShadow
+    />
+  );
+}
+
 function HeldWeaponMesh({
   id,
   muzzleRef,
@@ -1025,11 +1006,11 @@ function HeldWeaponMesh({
     return (
       <group position={[0, 0, -0.35]}>
         <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <cylinderGeometry args={[0.055, 0.055, 1.35, 16]} />
+          <cylinderGeometry args={[0.055, 0.055, 1.35, 14]} />
           <meshStandardMaterial color="#8d9290" metalness={0.82} roughness={0.26} />
         </mesh>
         <mesh position={[0, 0, 0.38]} rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.068, 0.068, 0.34, 14]} />
+          <cylinderGeometry args={[0.068, 0.068, 0.34, 12]} />
           <meshStandardMaterial color="#42261a" roughness={0.85} />
         </mesh>
       </group>
@@ -1043,7 +1024,7 @@ function HeldWeaponMesh({
           <meshStandardMaterial color="#caccc4" metalness={0.85} roughness={0.18} />
         </mesh>
         <mesh position={[0, 0, 0.28]} rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.055, 0.055, 0.34, 14]} />
+          <cylinderGeometry args={[0.055, 0.055, 0.34, 12]} />
           <meshStandardMaterial color="#513020" roughness={0.85} />
         </mesh>
       </group>
@@ -1052,7 +1033,7 @@ function HeldWeaponMesh({
   return (
     <group position={[0, -0.24, -0.04]} rotation={[-Math.PI / 2, 0, 0]}>
       <mesh position={[0, 0, -0.18]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-        <cylinderGeometry args={[0.045, 0.045, 1.05, 16]} />
+        <cylinderGeometry args={[0.045, 0.045, 1.05, 14]} />
         <meshStandardMaterial color="#777c7a" metalness={0.82} roughness={0.25} />
       </mesh>
       <mesh position={[0, -0.045, -0.22]} rotation={[Math.PI / 2, 0, 0]} castShadow>
@@ -1077,11 +1058,11 @@ function HeldWeaponMesh({
   );
 }
 
-/**
- * Skinned Rick Taylor character rig with procedural PBR maps, morph targets,
- * and weapon mounts.
- */
-export function RickTaylorCharacter({ motion, equippedWeapon = null }: CharacterProps) {
+export function RickTaylorRig({
+  motion,
+  equippedWeapon = null,
+  bloodIntensity = 0.85,
+}: CharacterProps) {
   const root = useRef<THREE.Group>(null);
   const headMount = useRef<THREE.Group>(null);
   const beltMount = useRef<THREE.Group>(null);
@@ -1095,45 +1076,108 @@ export function RickTaylorCharacter({ motion, equippedWeapon = null }: Character
   const gaitPhase = useRef(0);
   const flexState = useRef({ left: 0.15, right: 0.18, leg: 0.1 });
 
-  const assets = useMemo(() => {
-    const {
-      skinMap,
-      skinRoughnessMap,
-      skinBumpMap,
-      jeansMap,
-      jeansBumpMap,
-      maskMap,
-      maskBumpMap,
-      gradientMap,
-    } = createProceduralPBRMaps();
+  const canvasMaps = useMemo(() => createProceduralPBRMaps(), []);
+  const skinSurfaceMaps = useMemo(
+    () => createProceduralSurfaceMaps("skin", 512, bloodIntensity),
+    [bloodIntensity]
+  );
+  const denimSurfaceMaps = useMemo(
+    () => createProceduralSurfaceMaps("denim", 512, bloodIntensity * 0.75),
+    [bloodIntensity]
+  );
 
-    const upperBodyGeo = createUpperBodySkinnedGeometry();
-    const trousersGeo = createTrousersSkinnedGeometry();
-    const maskGeo = createTerrorMaskGeometry();
-    const bootGeo = createCombatBootGeometry();
+  useEffect(() => {
+    return () => {
+      skinSurfaceMaps.dispose();
+      denimSurfaceMaps.dispose();
+    };
+  }, [skinSurfaceMaps, denimSurfaceMaps]);
 
-    // Build 13-bone skeleton matching skinning indices
-    const boneOffsets: Array<[number, [number, number, number]]> = [
-      [BONE_HIPS, [0, 0.92, 0]],
-      [BONE_SPINE, [0, 0.22, 0]],
-      [BONE_CHEST, [0, 0.24, 0]],
-      [BONE_NECK, [0, 0.36, 0]],
-      [BONE_HEAD, [0, 0.16, 0.02]],
-      [BONE_L_SHOULDER, [-0.42, 0.24, 0]],
-      [BONE_L_ELBOW, [-0.13, -0.56, -0.02]],
-      [BONE_R_SHOULDER, [0.42, 0.24, 0]],
-      [BONE_R_ELBOW, [0.13, -0.56, -0.02]],
-      [BONE_L_THIGH, [-0.16, -0.04, 0]],
-      [BONE_L_KNEE, [0, -0.44, 0]],
-      [BONE_R_THIGH, [0.16, -0.04, 0]],
-      [BONE_R_KNEE, [0, -0.44, 0]],
-    ];
+  const {
+    upperBodyGeo,
+    trousersGeo,
+    maskGeo,
+    bootGeo,
+    sphereGeo,
+    skinMat,
+    jeansMat,
+    maskMat,
+    darkVoidMat,
+    leatherMat,
+    metalMat,
+    skinnedUpperBody,
+    skinnedTrousers,
+  } = useMemo(() => {
+    const uBody = createUpperBodySkinnedGeometry();
+    const trs = createTrousersSkinnedGeometry();
+    const msk = createTerrorMaskGeometry();
+    const bt = createCombatBootGeometry();
+    const sph = new THREE.SphereGeometry(1, 20, 16);
 
-    const bones = boneOffsets.map(([, pos]) => {
-      const b = new THREE.Bone();
-      b.position.set(pos[0], pos[1], pos[2]);
-      return b;
+    const sMat = new THREE.MeshStandardMaterial({
+      map: canvasMaps.skinMap,
+      normalMap: skinSurfaceMaps.normalMap,
+      normalScale: new THREE.Vector2(0.9, 0.9),
+      aoMap: skinSurfaceMaps.aoMap,
+      aoMapIntensity: 1.15,
+      roughnessMap: skinSurfaceMaps.roughnessMap,
+      roughness: 1.0,
+      metalness: 0.0,
+      vertexColors: true,
     });
+
+    const jMat = new THREE.MeshStandardMaterial({
+      map: canvasMaps.jeansMap,
+      normalMap: denimSurfaceMaps.normalMap,
+      normalScale: new THREE.Vector2(1.0, 1.0),
+      aoMap: denimSurfaceMaps.aoMap,
+      aoMapIntensity: 1.2,
+      roughnessMap: denimSurfaceMaps.roughnessMap,
+      roughness: 1.0,
+      metalness: 0.0,
+      vertexColors: true,
+    });
+
+    const mMat = new THREE.MeshStandardMaterial({
+      map: canvasMaps.maskMap,
+      bumpMap: canvasMaps.maskBumpMap,
+      bumpScale: 0.012,
+      roughness: 0.58,
+      metalness: 0.02,
+      vertexColors: true,
+    });
+
+    const dMat = new THREE.MeshBasicMaterial({ color: "#09090b" });
+    const lMat = new THREE.MeshStandardMaterial({
+      color: "#2c1b14",
+      roughness: 0.55,
+      metalness: 0.08,
+    });
+    const mtMat = new THREE.MeshStandardMaterial({
+      color: "#a8b0bc",
+      roughness: 0.28,
+      metalness: 0.85,
+    });
+
+    const bones: THREE.Bone[] = [];
+    for (let i = 0; i < 13; i++) {
+      bones.push(new THREE.Bone());
+    }
+    bones[BONE_HIPS].position.set(0, 0.95, 0);
+    bones[BONE_SPINE].position.set(0, 0.16, 0);
+    bones[BONE_CHEST].position.set(0, 0.34, 0);
+    bones[BONE_NECK].position.set(0, 0.42, 0);
+    bones[BONE_HEAD].position.set(0, 0.16, 0);
+
+    bones[BONE_L_SHOULDER].position.set(-0.36, 0.32, 0);
+    bones[BONE_L_ELBOW].position.set(-0.18, -0.56, -0.01);
+    bones[BONE_R_SHOULDER].position.set(0.36, 0.32, 0);
+    bones[BONE_R_ELBOW].position.set(0.18, -0.56, -0.01);
+
+    bones[BONE_L_THIGH].position.set(-0.162, -0.02, 0);
+    bones[BONE_L_KNEE].position.set(0, -0.44, 0);
+    bones[BONE_R_THIGH].position.set(0.162, -0.02, 0);
+    bones[BONE_R_KNEE].position.set(0, -0.44, 0);
 
     bones[BONE_HIPS].add(bones[BONE_SPINE]);
     bones[BONE_SPINE].add(bones[BONE_CHEST]);
@@ -1143,6 +1187,7 @@ export function RickTaylorCharacter({ motion, equippedWeapon = null }: Character
     bones[BONE_L_SHOULDER].add(bones[BONE_L_ELBOW]);
     bones[BONE_CHEST].add(bones[BONE_R_SHOULDER]);
     bones[BONE_R_SHOULDER].add(bones[BONE_R_ELBOW]);
+
     bones[BONE_HIPS].add(bones[BONE_L_THIGH]);
     bones[BONE_L_THIGH].add(bones[BONE_L_KNEE]);
     bones[BONE_HIPS].add(bones[BONE_R_THIGH]);
@@ -1150,643 +1195,421 @@ export function RickTaylorCharacter({ motion, equippedWeapon = null }: Character
 
     const skeleton = new THREE.Skeleton(bones);
 
-    const skinMaterial = new THREE.MeshStandardMaterial({
-      map: skinMap,
-      bumpMap: skinBumpMap,
-      bumpScale: 0.008,
-      roughnessMap: skinRoughnessMap,
-      roughness: 0.62,
-      metalness: 0.02,
-      vertexColors: true,
-    });
+    const meshUpper = new THREE.SkinnedMesh(uBody, sMat);
+    meshUpper.add(bones[BONE_HIPS]);
+    meshUpper.bind(skeleton);
+    meshUpper.castShadow = true;
+    meshUpper.receiveShadow = true;
 
-    const forearmMaterial = new THREE.MeshToonMaterial({
-      map: skinMap,
-      bumpMap: skinBumpMap,
-      bumpScale: 0.006,
-      gradientMap,
-      color: "#eab093",
-    });
-
-    const jeansMaterial = new THREE.MeshStandardMaterial({
-      map: jeansMap,
-      bumpMap: jeansBumpMap,
-      bumpScale: 0.012,
-      roughness: 0.84,
-      metalness: 0.04,
-      vertexColors: true,
-    });
-
-    const maskMaterial = new THREE.MeshStandardMaterial({
-      map: maskMap,
-      bumpMap: maskBumpMap,
-      bumpScale: 0.01,
-      roughness: 0.52,
-      metalness: 0.05,
-      vertexColors: true,
-    });
-
-    const bootMaterial = new THREE.MeshStandardMaterial({
-      color: "#231c1a",
-      roughness: 0.58,
-      metalness: 0.12,
-    });
-
-    const beltMaterial = new THREE.MeshStandardMaterial({
-      color: "#3b261b",
-      roughness: 0.7,
-      metalness: 0.15,
-    });
-
-    const buckleMaterial = new THREE.MeshStandardMaterial({
-      color: "#b8c0cc",
-      roughness: 0.25,
-      metalness: 0.85,
-    });
-
-    const upperSkinnedMesh = new THREE.SkinnedMesh(upperBodyGeo, skinMaterial);
-    upperSkinnedMesh.castShadow = true;
-    upperSkinnedMesh.receiveShadow = true;
-    upperSkinnedMesh.frustumCulled = false;
-    upperSkinnedMesh.add(bones[BONE_HIPS]);
-    upperSkinnedMesh.bind(skeleton);
-
-    const trousersSkinnedMesh = new THREE.SkinnedMesh(trousersGeo, jeansMaterial);
-    trousersSkinnedMesh.castShadow = true;
-    trousersSkinnedMesh.receiveShadow = true;
-    trousersSkinnedMesh.frustumCulled = false;
-    trousersSkinnedMesh.bind(skeleton);
-
-    const forearmGeo = new THREE.CapsuleGeometry(0.112, 0.28, 12, 20);
-    const handGeo = new THREE.SphereGeometry(0.115, 16, 14);
+    const meshTrousers = new THREE.SkinnedMesh(trs, jMat);
+    meshTrousers.bind(skeleton);
+    meshTrousers.castShadow = true;
+    meshTrousers.receiveShadow = true;
 
     return {
-      bones,
-      skeleton,
-      upperSkinnedMesh,
-      trousersSkinnedMesh,
-      maskGeo,
-      bootGeo,
-      forearmGeo,
-      handGeo,
-      skinMaterial,
-      forearmMaterial,
-      jeansMaterial,
-      maskMaterial,
-      bootMaterial,
-      beltMaterial,
-      buckleMaterial,
-      textures: [
-        skinMap,
-        skinRoughnessMap,
-        skinBumpMap,
-        jeansMap,
-        jeansBumpMap,
-        maskMap,
-        maskBumpMap,
-        gradientMap,
-      ],
-      geometries: [upperBodyGeo, trousersGeo, maskGeo, bootGeo, forearmGeo, handGeo],
-      materials: [
-        skinMaterial,
-        forearmMaterial,
-        jeansMaterial,
-        maskMaterial,
-        bootMaterial,
-        beltMaterial,
-        buckleMaterial,
-      ],
+      upperBodyGeo: uBody,
+      trousersGeo: trs,
+      maskGeo: msk,
+      bootGeo: bt,
+      sphereGeo: sph,
+      skinMat: sMat,
+      jeansMat: jMat,
+      maskMat: mMat,
+      darkVoidMat: dMat,
+      leatherMat: lMat,
+      metalMat: mtMat,
+      skinnedUpperBody: meshUpper,
+      skinnedTrousers: meshTrousers,
     };
-  }, []);
+  }, [canvasMaps, skinSurfaceMaps, denimSurfaceMaps]);
 
-  // Dispose procedural GPU resources cleanly on unmount
   useEffect(() => {
     return () => {
-      assets.textures.forEach((t) => t.dispose());
-      assets.geometries.forEach((g) => g.dispose());
-      assets.materials.forEach((m) => m.dispose());
+      upperBodyGeo.dispose();
+      trousersGeo.dispose();
+      maskGeo.dispose();
+      bootGeo.dispose();
+      sphereGeo.dispose();
+      skinMat.dispose();
+      jeansMat.dispose();
+      maskMat.dispose();
+      darkVoidMat.dispose();
+      leatherMat.dispose();
+      metalMat.dispose();
+      Object.values(canvasMaps).forEach((tex) => tex.dispose());
     };
-  }, [assets]);
+  }, [
+    upperBodyGeo,
+    trousersGeo,
+    maskGeo,
+    bootGeo,
+    sphereGeo,
+    skinMat,
+    jeansMat,
+    maskMat,
+    darkVoidMat,
+    leatherMat,
+    metalMat,
+    canvasMaps,
+  ]);
 
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.05);
-    const { bones, upperSkinnedMesh, trousersSkinnedMesh } = assets;
+    if (motion.moving || motion.jumpHeight > 0.01) {
+      gaitPhase.current += dt * (motion.moving ? 9.5 : 3.0);
+    } else {
+      gaitPhase.current += dt * 1.8;
+    }
 
+    const p = gaitPhase.current;
     const isAttacking = motion.attackTime > 0;
     const isGrabbing = motion.grabTime > 0;
-    const atkP = THREE.MathUtils.clamp(motion.attackProgress, 0, 1);
-    const swing = isAttacking ? Math.sin(atkP * Math.PI) : 0;
+    const swingLeg = motion.moving ? Math.sin(p) * 0.55 : 0;
 
-    if (motion.moving) {
-      gaitPhase.current += dt * 9.5;
-    } else {
-      gaitPhase.current += dt * 2.2;
+    const targetLeftFlex =
+      (motion.leftFlex ?? 0.15) + (isGrabbing ? 0.45 : motion.moving ? Math.max(0, -swingLeg) * 0.35 : 0.05);
+    const targetRightFlex =
+      (motion.rightFlex ?? 0.18) + (isAttacking ? 0.75 : motion.moving ? Math.max(0, swingLeg) * 0.35 : 0.08);
+    const targetLegFlex = (motion.legFlex ?? 0.1) + (motion.moving ? Math.abs(swingLeg) * 0.45 : 0);
+
+    flexState.current.left = THREE.MathUtils.lerp(flexState.current.left, targetLeftFlex, dt * 12);
+    flexState.current.right = THREE.MathUtils.lerp(flexState.current.right, targetRightFlex, dt * 12);
+    flexState.current.leg = THREE.MathUtils.lerp(flexState.current.leg, targetLegFlex, dt * 12);
+
+    const breathWeight = 0.5 + 0.5 * Math.sin(p * 1.15);
+    if (skinnedUpperBody.morphTargetInfluences) {
+      skinnedUpperBody.morphTargetInfluences[0] = breathWeight;
+      skinnedUpperBody.morphTargetInfluences[1] = THREE.MathUtils.clamp(flexState.current.left, 0, 1);
+      skinnedUpperBody.morphTargetInfluences[2] = THREE.MathUtils.clamp(flexState.current.right, 0, 1);
+    }
+    if (skinnedTrousers.morphTargetInfluences) {
+      skinnedTrousers.morphTargetInfluences[0] = THREE.MathUtils.clamp(flexState.current.leg, 0, 1);
     }
 
-    const g = gaitPhase.current;
-    const walkAmp = motion.moving ? 0.52 : 0.0;
-    const breathWave = 0.5 + 0.5 * Math.sin(g * 1.15);
+    const attackSwing = isAttacking ? Math.sin(THREE.MathUtils.clamp(motion.attackProgress, 0, 1) * Math.PI) : 0;
+    const spineTwist = attackSwing * 0.38 - swingLeg * 0.08;
+    const chestPitch = attackSwing * 0.22 + (isGrabbing ? 0.16 : 0.03);
 
-    const targetLeftFlex = THREE.MathUtils.clamp(
-      (motion.leftFlex ?? 0.2) + (isGrabbing ? 0.65 : 0) + (motion.moving ? 0.2 : 0),
-      0,
-      1
-    );
-    const targetRightFlex = THREE.MathUtils.clamp(
-      (motion.rightFlex ?? 0.25) + (isAttacking ? 0.85 * swing : 0.15),
-      0,
-      1
-    );
-    const targetLegFlex = THREE.MathUtils.clamp(
-      (motion.legFlex ?? 0.15) + (motion.moving ? 0.45 : 0) + (motion.jumpHeight > 0.02 ? 0.5 : 0),
-      0,
-      1
-    );
+    const skel = skinnedUpperBody.skeleton;
+    if (skel && skel.bones.length >= 13) {
+      const b = skel.bones;
 
-    flexState.current.left = THREE.MathUtils.lerp(flexState.current.left, targetLeftFlex, 10 * dt);
-    flexState.current.right = THREE.MathUtils.lerp(flexState.current.right, targetRightFlex, 10 * dt);
-    flexState.current.leg = THREE.MathUtils.lerp(flexState.current.leg, targetLegFlex, 10 * dt);
+      _matHips.makeRotationFromEuler(new THREE.Euler(0, swingLeg * 0.12, 0));
+      _matHips.setPosition(0, 0.95 + motion.jumpHeight, 0);
+      b[BONE_HIPS].matrix.copy(_matHips);
 
-    // Apply morph target weights to skinned meshes
-    if (upperSkinnedMesh.morphTargetInfluences) {
-      upperSkinnedMesh.morphTargetInfluences[0] = breathWave * 0.85;
-      upperSkinnedMesh.morphTargetInfluences[1] = flexState.current.left;
-      upperSkinnedMesh.morphTargetInfluences[2] = flexState.current.right;
-    }
-    if (trousersSkinnedMesh.morphTargetInfluences) {
-      trousersSkinnedMesh.morphTargetInfluences[0] = flexState.current.leg;
-    }
+      _matSpine.makeRotationFromEuler(new THREE.Euler(chestPitch * 0.5, spineTwist * 0.5, 0));
+      _matSpine.setPosition(0, 0.16, 0);
+      b[BONE_SPINE].matrix.copy(_matSpine);
 
-    // Root vertical jump & bobbing
-    if (root.current) {
-      const bob = motion.moving ? Math.abs(Math.sin(g)) * 0.035 : Math.sin(g * 1.15) * 0.012;
-      root.current.position.y = (motion.jumpHeight || 0) + bob;
-    }
+      _matChest.makeRotationFromEuler(new THREE.Euler(chestPitch * 0.5, spineTwist * 0.5, 0));
+      _matChest.setPosition(0, 0.34, 0);
+      b[BONE_CHEST].matrix.copy(_matChest);
 
-    // Bone transforms (note: character faces -Z in local rig coordinates)
-    bones[BONE_HIPS].position.set(0, 0.92, 0);
-    bones[BONE_HIPS].rotation.set(
-      motion.moving ? 0.05 : 0,
-      isAttacking ? -swing * 0.25 : 0,
-      motion.moving ? Math.sin(g) * 0.03 : 0
-    );
+      _matNeck.makeRotationFromEuler(new THREE.Euler(-chestPitch * 0.3, -spineTwist * 0.3, 0));
+      _matNeck.setPosition(0, 0.42, 0);
+      b[BONE_NECK].matrix.copy(_matNeck);
 
-    bones[BONE_SPINE].rotation.set(
-      0.04 + breathWave * 0.03,
-      isAttacking ? -swing * 0.35 : 0,
-      0
-    );
+      _matHead.makeRotationFromEuler(
+        new THREE.Euler(
+          motion.shotgunAimPitch ?? -chestPitch * 0.2,
+          motion.shotgunAimYaw ?? -spineTwist * 0.2,
+          0
+        )
+      );
+      _matHead.setPosition(0, 0.16, 0);
+      b[BONE_HEAD].matrix.copy(_matHead);
 
-    bones[BONE_CHEST].rotation.set(
-      0.03 + breathWave * 0.04,
-      isAttacking ? -swing * 0.45 : motion.shotgunAimYaw ?? 0,
-      0
-    );
+      const lShPitch = isGrabbing ? -1.15 : swingLeg * 0.65 - 0.12;
+      const lElbPitch = isGrabbing ? -0.45 : -0.42 - flexState.current.left * 0.3;
+      _matLShoulder.makeRotationFromEuler(new THREE.Euler(lShPitch, 0, -0.18));
+      _matLShoulder.setPosition(-0.36, 0.32, 0);
+      b[BONE_L_SHOULDER].matrix.copy(_matLShoulder);
 
-    bones[BONE_NECK].rotation.set(
-      -0.04 + (motion.shotgunAimPitch ?? 0) * 0.35,
-      isAttacking ? swing * 0.25 : 0,
-      0
-    );
+      _matLElbow.makeRotationFromEuler(new THREE.Euler(lElbPitch, 0, 0));
+      _matLElbow.setPosition(-0.18, -0.56, -0.01);
+      b[BONE_L_ELBOW].matrix.copy(_matLElbow);
 
-    bones[BONE_HEAD].rotation.set(
-      -0.03 + (motion.shotgunAimPitch ?? 0) * 0.65,
-      isAttacking ? swing * 0.2 : 0,
-      isGrabbing ? 0.08 : 0
-    );
+      const rShPitch = isAttacking ? -1.65 * attackSwing - 0.2 : -swingLeg * 0.65 - 0.12;
+      const rElbPitch = isAttacking ? -0.25 - attackSwing * 0.35 : -0.42 - flexState.current.right * 0.3;
+      _matRShoulder.makeRotationFromEuler(new THREE.Euler(rShPitch, attackSwing * 0.3, 0.18));
+      _matRShoulder.setPosition(0.36, 0.32, 0);
+      b[BONE_R_SHOULDER].matrix.copy(_matRShoulder);
 
-    // Legs
-    bones[BONE_L_THIGH].rotation.set(
-      Math.sin(g) * walkAmp - (motion.jumpHeight > 0.02 ? 0.35 : 0),
-      0,
-      -0.06
-    );
-    bones[BONE_L_KNEE].rotation.set(
-      Math.max(0, -Math.cos(g)) * walkAmp * 1.1 + (motion.jumpHeight > 0.02 ? 0.45 : 0),
-      0,
-      0
-    );
+      _matRElbow.makeRotationFromEuler(new THREE.Euler(rElbPitch, 0, 0));
+      _matRElbow.setPosition(0.18, -0.56, -0.01);
+      b[BONE_R_ELBOW].matrix.copy(_matRElbow);
 
-    bones[BONE_R_THIGH].rotation.set(
-      -Math.sin(g) * walkAmp - (motion.jumpHeight > 0.02 ? 0.25 : 0),
-      0,
-      0.06
-    );
-    bones[BONE_R_KNEE].rotation.set(
-      Math.max(0, Math.cos(g)) * walkAmp * 1.1 + (motion.jumpHeight > 0.02 ? 0.35 : 0),
-      0,
-      0
-    );
+      const lThighPitch = swingLeg;
+      const lKneePitch = Math.max(0, -swingLeg) * 0.75 + 0.08;
+      _matLThigh.makeRotationFromEuler(new THREE.Euler(lThighPitch, 0, 0));
+      _matLThigh.setPosition(-0.162, -0.02, 0);
+      b[BONE_L_THIGH].matrix.copy(_matLThigh);
 
-    // Arms & combat poses
-    let lShX = -Math.sin(g) * walkAmp * 0.65 - 0.12;
-    let lShZ = -0.18;
-    let lElbX = -0.35 - flexState.current.left * 0.45;
+      _matLKnee.makeRotationFromEuler(new THREE.Euler(lKneePitch, 0, 0));
+      _matLKnee.setPosition(0, -0.44, 0);
+      b[BONE_L_KNEE].matrix.copy(_matLKnee);
 
-    let rShX = Math.sin(g) * walkAmp * 0.65 - 0.14;
-    let rShZ = 0.18;
-    let rElbX = -0.38 - flexState.current.right * 0.45;
+      const rThighPitch = -swingLeg;
+      const rKneePitch = Math.max(0, swingLeg) * 0.75 + 0.08;
+      _matRThigh.makeRotationFromEuler(new THREE.Euler(rThighPitch, 0, 0));
+      _matRThigh.setPosition(0.162, -0.02, 0);
+      b[BONE_R_THIGH].matrix.copy(_matRThigh);
 
-    if (isGrabbing) {
-      lShX = -1.25;
-      lShZ = 0.12;
-      lElbX = -0.25;
-    }
+      _matRKnee.makeRotationFromEuler(new THREE.Euler(rKneePitch, 0, 0));
+      _matRKnee.setPosition(0, -0.44, 0);
+      b[BONE_R_KNEE].matrix.copy(_matRKnee);
 
-    if (equippedWeapon === "shotgun") {
-      rShX = -1.15 + (motion.shotgunAimPitch ?? 0);
-      rShZ = 0.06;
-      rElbX = -0.65;
-      lShX = -1.05 + (motion.shotgunAimPitch ?? 0);
-      lShZ = -0.22;
-      lElbX = -0.85;
-    } else if (isAttacking) {
-      const style = motion.attackStyle || "bat";
-      if (style === "overhead" || style === "macheteHead") {
-        rShX = THREE.MathUtils.lerp(1.4, -2.15, swing);
-        rElbX = -0.2;
-      } else {
-        // Punch / bat / machete horizontal slash
-        rShX = -1.35 * swing - 0.15;
-        rShZ = THREE.MathUtils.lerp(0.45, -0.35, swing);
-        rElbX = THREE.MathUtils.lerp(-1.1, -0.1, swing);
+      for (let i = 0; i < b.length; i++) {
+        b[i].matrixAutoUpdate = false;
+      }
+      b[BONE_HIPS].updateMatrixWorld(true);
+      skel.update();
+
+      if (headMount.current) {
+        headMount.current.position.set(0, 2.08 + motion.jumpHeight, 0.02);
+        headMount.current.rotation.set(
+          motion.shotgunAimPitch ?? 0,
+          motion.shotgunAimYaw ?? 0,
+          0
+        );
+      }
+      if (beltMount.current) {
+        beltMount.current.position.set(0, 1.03 + motion.jumpHeight, 0);
+      }
+      if (leftArmMount.current && leftForearm.current) {
+        leftArmMount.current.position.set(-0.55, 1.12 + motion.jumpHeight, -0.015);
+        leftArmMount.current.rotation.set(lShPitch + lElbPitch, 0, -0.14);
+      }
+      if (rightArmMount.current && rightForearm.current) {
+        rightArmMount.current.position.set(0.55, 1.12 + motion.jumpHeight, -0.015);
+        rightArmMount.current.rotation.set(rShPitch + rElbPitch, attackSwing * 0.25, 0.14);
+      }
+      if (leftBootMount.current) {
+        leftBootMount.current.position.set(-0.175, 0.45 + motion.jumpHeight + Math.max(0, -swingLeg) * 0.08, swingLeg * 0.14);
+        leftBootMount.current.rotation.set(swingLeg * 0.4, 0, 0);
+      }
+      if (rightBootMount.current) {
+        rightBootMount.current.position.set(0.175, 0.45 + motion.jumpHeight + Math.max(0, swingLeg) * 0.08, -swingLeg * 0.14);
+        rightBootMount.current.rotation.set(-swingLeg * 0.4, 0, 0);
       }
     }
-
-    bones[BONE_L_SHOULDER].rotation.set(lShX, 0, lShZ);
-    bones[BONE_L_ELBOW].rotation.set(lElbX, 0, 0);
-    bones[BONE_R_SHOULDER].rotation.set(rShX, 0, rShZ);
-    bones[BONE_R_ELBOW].rotation.set(rElbX, 0, 0);
-
-    // Sync world-space sub-assemblies (Terror Mask, Belt, Forearms, Boots) to skeleton matrices
-    upperSkinnedMesh.updateMatrixWorld(true);
-    bones.forEach((b) => b.updateMatrixWorld(true));
-
-    _matHips.copy(bones[BONE_HIPS].matrixWorld);
-    _matSpine.copy(bones[BONE_SPINE].matrixWorld);
-    _matChest.copy(bones[BONE_CHEST].matrixWorld);
-    _matNeck.copy(bones[BONE_NECK].matrixWorld);
-    _matHead.copy(bones[BONE_HEAD].matrixWorld);
-    _matLShoulder.copy(bones[BONE_L_SHOULDER].matrixWorld);
-    _matLElbow.copy(bones[BONE_L_ELBOW].matrixWorld);
-    _matRShoulder.copy(bones[BONE_R_SHOULDER].matrixWorld);
-    _matRElbow.copy(bones[BONE_R_ELBOW].matrixWorld);
-    _matLThigh.copy(bones[BONE_L_THIGH].matrixWorld);
-    _matLKnee.copy(bones[BONE_L_KNEE].matrixWorld);
-    _matRThigh.copy(bones[BONE_R_THIGH].matrixWorld);
-    _matRKnee.copy(bones[BONE_R_KNEE].matrixWorld);
-
-    if (headMount.current) {
-      headMount.current.matrix.copy(_matHead);
-      headMount.current.matrixAutoUpdate = false;
-    }
-    if (beltMount.current) {
-      beltMount.current.matrix.copy(_matHips);
-      beltMount.current.matrixAutoUpdate = false;
-    }
-
-    if (leftArmMount.current && leftForearm.current) {
-      leftArmMount.current.matrix.copy(_matLElbow);
-      leftArmMount.current.matrixAutoUpdate = false;
-      leftForearm.current.rotation.set(lElbX, 0, 0.12);
-    }
-    if (rightArmMount.current && rightForearm.current) {
-      rightArmMount.current.matrix.copy(_matRElbow);
-      rightArmMount.current.matrixAutoUpdate = false;
-      rightForearm.current.rotation.set(rElbX, 0, -0.12);
-    }
-
-    if (leftBootMount.current) {
-      leftBootMount.current.matrix.copy(_matLKnee);
-      leftBootMount.current.matrixAutoUpdate = false;
-    }
-    if (rightBootMount.current) {
-      rightBootMount.current.matrix.copy(_matRKnee);
-      rightBootMount.current.matrixAutoUpdate = false;
-    }
-
-    if (muzzleRef.current) {
-      muzzleRef.current.visible = equippedWeapon === "shotgun" && isAttacking && swing > 0.65;
-    }
-
-    void _matSpine;
-    void _matChest;
-    void _matNeck;
-    void _matLShoulder;
-    void _matRShoulder;
-    void _matLThigh;
-    void _matRThigh;
   });
 
+  const activeWeapon = equippedWeapon ?? motion.weapon;
+
   return (
-    <group ref={root} position={[0, 0, 0]}>
-      {/* Skinned Upper Body (Torso + Neck + Undulating Upper Arms) */}
-      <primitive object={assets.upperSkinnedMesh} />
+    <group ref={root}>
+      <primitive object={skinnedUpperBody} />
+      <primitive object={skinnedTrousers} />
 
-      {/* Skinned Denim Trousers (Pelvis + Thighs + Knees + Shredded Cuffs) */}
-      <primitive object={assets.trousersSkinnedMesh} />
-
-      {/* Terror Mask Mount */}
-      <group ref={headMount} matrixAutoUpdate={false}>
-        <mesh
-          geometry={assets.maskGeo}
-          material={assets.maskMaterial}
-          position={[0, 0.08, -0.02]}
-          castShadow
-          receiveShadow
-        />
-      </group>
-
-      {/* Leather Belt & Buckle */}
-      <group ref={beltMount} matrixAutoUpdate={false}>
-        <mesh material={assets.beltMaterial} position={[0, 0.09, 0]} castShadow>
-          <cylinderGeometry args={[0.295, 0.305, 0.065, 28]} />
+      <group ref={beltMount} position={[0, 1.03, 0]}>
+        <mesh position={[0, 0, 0]} material={leatherMat} castShadow>
+          <cylinderGeometry args={[0.295, 0.295, 0.075, 28]} />
         </mesh>
-        <mesh material={assets.buckleMaterial} position={[0, 0.09, -0.295]} castShadow>
-          <boxGeometry args={[0.09, 0.075, 0.028]} />
+        <mesh position={[0, 0, -0.295]} material={metalMat}>
+          <boxGeometry args={[0.09, 0.07, 0.025]} />
         </mesh>
       </group>
 
-      {/* Left Forearm + Fist */}
-      <group ref={leftArmMount} matrixAutoUpdate={false}>
+      <group ref={headMount} position={[0, 2.08, 0.02]}>
+        <mesh geometry={maskGeo} material={maskMat} castShadow receiveShadow />
+        {ellipsoid(sphereGeo, darkVoidMat, [-0.115, 0.07, -0.195], [0.052, 0.04, 0.025])}
+        {ellipsoid(sphereGeo, darkVoidMat, [0.115, 0.07, -0.195], [0.052, 0.04, 0.025])}
+        {ellipsoid(sphereGeo, darkVoidMat, [0, -0.045, -0.205], [0.032, 0.042, 0.025])}
+      </group>
+
+      <group ref={leftArmMount} position={[-0.55, 1.12, -0.015]}>
         <group ref={leftForearm}>
-          <mesh
-            geometry={assets.forearmGeo}
-            material={assets.forearmMaterial}
-            position={[0, -0.17, 0]}
-            castShadow
-            receiveShadow
-          />
-          <mesh
-            geometry={assets.handGeo}
-            material={assets.forearmMaterial}
-            position={[0, -0.34, 0.01]}
-            scale={[0.92, 1.05, 1.05]}
-            castShadow
-          />
+          <mesh position={[0, -0.18, 0]} material={skinMat} castShadow receiveShadow>
+            <capsuleGeometry args={[0.105, 0.28, 10, 16]} />
+          </mesh>
+          {ellipsoid(sphereGeo, skinMat, [0, -0.37, -0.01], [0.105, 0.095, 0.12])}
         </group>
       </group>
 
-      {/* Right Forearm + Fist + Equipped Weapon */}
-      <group ref={rightArmMount} matrixAutoUpdate={false}>
+      <group ref={rightArmMount} position={[0.55, 1.12, -0.015]}>
         <group ref={rightForearm}>
-          <mesh
-            geometry={assets.forearmGeo}
-            material={assets.forearmMaterial}
-            position={[0, -0.17, 0]}
-            castShadow
-            receiveShadow
-          />
-          <mesh
-            geometry={assets.handGeo}
-            material={assets.forearmMaterial}
-            position={[0, -0.34, 0.01]}
-            scale={[0.92, 1.05, 1.05]}
-            castShadow
-          />
-          {equippedWeapon && (
-            <group position={[0, -0.36, -0.02]}>
-              <HeldWeaponMesh id={equippedWeapon} muzzleRef={muzzleRef} />
+          <mesh position={[0, -0.18, 0]} material={skinMat} castShadow receiveShadow>
+            <capsuleGeometry args={[0.105, 0.28, 10, 16]} />
+          </mesh>
+          {ellipsoid(sphereGeo, skinMat, [0, -0.37, -0.01], [0.105, 0.095, 0.12])}
+          {activeWeapon && (
+            <group position={[0, -0.38, -0.06]}>
+              <HeldWeaponMesh id={activeWeapon} muzzleRef={muzzleRef} />
             </group>
           )}
         </group>
       </group>
 
-      {/* Left & Right Combat Boots */}
-      <group ref={leftBootMount} matrixAutoUpdate={false}>
-        <mesh
-          geometry={assets.bootGeo}
-          material={assets.bootMaterial}
-          castShadow
-          receiveShadow
-        />
+      <group ref={leftBootMount} position={[-0.175, 0.45, 0]}>
+        <mesh geometry={bootGeo} material={leatherMat} castShadow receiveShadow />
       </group>
-      <group ref={rightBootMount} matrixAutoUpdate={false}>
-        <mesh
-          geometry={assets.bootGeo}
-          material={assets.bootMaterial}
-          castShadow
-          receiveShadow
-        />
+
+      <group ref={rightBootMount} position={[0.175, 0.45, 0]}>
+        <mesh geometry={bootGeo} material={leatherMat} castShadow receiveShadow />
       </group>
     </group>
   );
 }
 
-/**
- * Interactive preview stage with WebGPU initialization and automatic WebGL fallback.
- */
-export default function RickTaylorShowcase() {
-  const [poseMode, setPoseMode] = useState<RickPoseMode>("idle");
-  const [attackStyle, setAttackStyle] = useState<RickPipeAttackStyle>("bat");
-  const [weapon, setWeapon] = useState<RickWeaponId | null>("pipe");
-  const [leftFlex, setLeftFlex] = useState(0.35);
-  const [rightFlex, setRightFlex] = useState(0.45);
-  const [legFlex, setLegFlex] = useState(0.25);
-  const [rendererBackend, setRendererBackend] = useState<"WebGPU" | "WebGL2">("WebGL2");
-  const [attackAnim, setAttackAnim] = useState(0);
-
-  // Trigger smooth one-shot attack animation cycle
-  const triggerAttack = (style: RickPipeAttackStyle) => {
-    setAttackStyle(style);
-    setPoseMode("attack");
-    setAttackAnim(1.0);
-  };
-
+function RendererInitHelper({ onReady }: { onReady: (mode: "WebGPU" | "WebGL") => void }) {
+  const { gl } = useThree();
   useEffect(() => {
-    if (attackAnim <= 0) return;
-    let raf = 0;
-    let last = performance.now();
-    const tick = (now: number) => {
-      const dt = (now - last) / 1000;
-      last = now;
-      setAttackAnim((prev) => {
-        const next = Math.max(0, prev - dt * 1.85);
-        if (next === 0 && poseMode === "attack") {
-          setPoseMode("idle");
-        }
-        return next;
-      });
-      if (attackAnim > 0) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [attackAnim, poseMode]);
+    const isWebGPU =
+      typeof (gl as unknown as { isWebGPURenderer?: boolean }).isWebGPURenderer === "boolean" &&
+      Boolean((gl as unknown as { isWebGPURenderer?: boolean }).isWebGPURenderer);
+    onReady(isWebGPU ? "WebGPU" : "WebGL");
+  }, [gl, onReady]);
+  return null;
+}
 
-  const motion: RickMotion = {
-    moving: poseMode === "walk",
-    attackTime: poseMode === "attack" ? Math.max(0.2, attackAnim) : 0,
-    attackStyle,
-    attackProgress: poseMode === "attack" ? 1 - attackAnim : 0,
-    grabTime: poseMode === "grab" ? 1 : 0,
-    jumpHeight: poseMode === "jump" ? 0.28 : 0,
-    weapon,
-    leftFlex,
-    rightFlex,
-    legFlex,
-  };
+export default function RickTaylorCharacter3DHD() {
+  const [backend, setBackend] = useState<"WebGPU" | "WebGL">("WebGL");
+  const [poseMode, setPoseMode] = useState<RickPoseMode>("idle");
+  const [weapon, setWeapon] = useState<RickWeaponId | null>("pipe");
+  const [bloodIntensity, setBloodIntensity] = useState<number>(0.85);
+  const [leftFlex, setLeftFlex] = useState<number>(0.25);
+  const [rightFlex, setRightFlex] = useState<number>(0.35);
+  const [legFlex, setLegFlex] = useState<number>(0.15);
+
+  const motion: RickMotion = useMemo(
+    () => ({
+      moving: poseMode === "walk",
+      attackTime: poseMode === "attack" ? 0.4 : 0,
+      attackStyle: poseMode === "attack" ? "bat" : null,
+      attackProgress: poseMode === "attack" ? 0.5 : 0,
+      grabTime: poseMode === "grab" ? 0.4 : 0,
+      jumpHeight: poseMode === "jump" ? 0.35 : 0,
+      weapon,
+      leftFlex,
+      rightFlex,
+      legFlex,
+    }),
+    [poseMode, weapon, leftFlex, rightFlex, legFlex]
+  );
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-white text-neutral-900 select-none">
+    <div style={{ width: "100vw", height: "100vh", position: "relative", background: "#141418" }}>
       <Canvas
         shadows
         dpr={[1, 2]}
-        camera={{ position: [0, 1.35, 3.3], fov: 40 }}
-        gl={async (props) => {
-          // Attempt WebGPU renderer first when available, falling back cleanly to WebGL
-          try {
-            const gpuNav = navigator as Navigator & { gpu?: unknown };
-            if (gpuNav.gpu) {
-              const webgpuMod = await import("three/webgpu");
-              if (webgpuMod?.WebGPURenderer) {
-                const renderer = new webgpuMod.WebGPURenderer({
-                  canvas: props.canvas as HTMLCanvasElement,
-                  antialias: true,
-                });
-                await renderer.init();
-                setRendererBackend("WebGPU");
-                return renderer as unknown as THREE.WebGLRenderer;
-              }
-            }
-          } catch {
-            // Fall through to standard WebGLRenderer
-          }
-          setRendererBackend("WebGL2");
-          return new THREE.WebGLRenderer({
-            canvas: props.canvas as HTMLCanvasElement,
-            antialias: true,
-          });
-        }}
+        camera={{ position: [0, 1.35, 3.2], fov: 42 }}
       >
-        <color attach="background" args={["#ffffff"]} />
-        <ambientLight intensity={0.75} />
-        <directionalLight
-          position={[3.5, 5.5, 4.5]}
-          intensity={1.55}
-          castShadow
-          shadow-mapSize={[1024, 1024]}
+        <color attach="background" args={["#18181f"]} />
+        <RendererInitHelper onReady={setBackend} />
+
+        <ambientLight intensity={0.65} />
+        <directionalLight position={[3, 5, 4]} intensity={1.5} castShadow />
+        <directionalLight position={[-3, 2, -2]} intensity={0.5} color="#9bb8ff" />
+
+        <RickTaylorRig
+          motion={motion}
+          equippedWeapon={weapon}
+          bloodIntensity={bloodIntensity}
         />
-        <directionalLight position={[-3.5, 2.5, -3]} intensity={0.45} color="#b8d0ff" />
 
-        <RickTaylorCharacter motion={motion} equippedWeapon={weapon} />
-
-        <ContactShadows position={[0, 0, 0]} opacity={0.4} scale={6} blur={1.8} far={2.5} />
+        <ContactShadows position={[0, 0, 0]} opacity={0.55} scale={6} blur={1.8} />
         <Environment preset="studio" />
-        <OrbitControls target={[0, 1.05, 0]} enablePan={false} minDistance={1.6} maxDistance={6.5} />
+        <OrbitControls target={[0, 1.15, 0]} />
       </Canvas>
 
-      {/* Top-Left Badge */}
-      <div className="pointer-events-none absolute top-4 left-4 flex items-center gap-2 rounded-xl border border-neutral-200 bg-white/90 px-3.5 py-2 shadow-sm backdrop-blur">
-        <span className="h-2.5 w-2.5 rounded-full bg-red-600" />
-        <span className="text-sm font-semibold tracking-tight">Rick Taylor — Procedural Rig</span>
-        <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
-          {rendererBackend}
-        </span>
-      </div>
-
-      {/* Control Panel */}
-      <div className="absolute right-4 bottom-4 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-neutral-200 bg-white/92 p-4 shadow-lg backdrop-blur">
-        <div className="mb-3 flex items-center justify-between">
-          <span className="text-xs font-bold tracking-wider text-neutral-500 uppercase">
-            Pose &amp; Animation
-          </span>
-          <span className="text-xs font-medium text-red-700 capitalize">{poseMode}</span>
+      <div
+        style={{
+          position: "absolute",
+          top: 16,
+          left: 16,
+          padding: 14,
+          borderRadius: 10,
+          background: "rgba(18, 18, 24, 0.88)",
+          color: "#f4f4f6",
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 13,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          minWidth: 240,
+        }}
+      >
+        <div>
+          <strong>Rick Taylor 3D HD</strong> ({backend})
         </div>
 
-        <div className="mb-3 grid grid-cols-4 gap-1.5">
-          {(["idle", "walk", "grab", "jump"] as RickPoseMode[]).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => setPoseMode(mode)}
-              className={`rounded-lg px-2 py-1.5 text-xs font-semibold capitalize transition ${
-                poseMode === mode
-                  ? "bg-neutral-900 text-white"
-                  : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
-              }`}
-            >
-              {mode}
-            </button>
-          ))}
-        </div>
+        <label style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <span>Pose:</span>
+          <select value={poseMode} onChange={(e) => setPoseMode(e.target.value as RickPoseMode)}>
+            <option value="idle">Idle</option>
+            <option value="walk">Walk</option>
+            <option value="attack">Attack</option>
+            <option value="grab">Grab</option>
+            <option value="jump">Jump</option>
+          </select>
+        </label>
 
-        <div className="mb-3 grid grid-cols-2 gap-1.5">
-          <button
-            type="button"
-            onClick={() => triggerAttack("bat")}
-            className="rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700"
+        <label style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <span>Arma:</span>
+          <select
+            value={weapon ?? ""}
+            onChange={(e) => setWeapon((e.target.value || null) as RickWeaponId | null)}
           >
-            Slash / Punch
-          </button>
-          <button
-            type="button"
-            onClick={() => triggerAttack("overhead")}
-            className="rounded-lg bg-neutral-800 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-neutral-900"
-          >
-            Overhead Strike
-          </button>
-        </div>
+            <option value="">Nenhuma</option>
+            <option value="pipe">Cano</option>
+            <option value="machete">Machete</option>
+            <option value="shotgun">Shotgun</option>
+          </select>
+        </label>
 
-        <div className="mb-3">
-          <span className="mb-1.5 block text-xs font-bold tracking-wider text-neutral-500 uppercase">
-            Weapon
-          </span>
-          <div className="grid grid-cols-4 gap-1.5">
-            {([null, "pipe", "machete", "shotgun"] as Array<RickWeaponId | null>).map((w) => (
-              <button
-                key={w ?? "none"}
-                type="button"
-                onClick={() => setWeapon(w)}
-                className={`rounded-lg px-2 py-1.5 text-xs font-semibold capitalize transition ${
-                  weapon === w
-                    ? "bg-red-600 text-white"
-                    : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
-                }`}
-              >
-                {w ?? "None"}
-              </button>
-            ))}
-          </div>
-        </div>
+        <label>
+          Sangue / Brilho: {bloodIntensity.toFixed(2)}
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={bloodIntensity}
+            onChange={(e) => setBloodIntensity(parseFloat(e.target.value))}
+            style={{ width: "100%" }}
+          />
+        </label>
 
-        <div className="space-y-2 border-t border-neutral-200 pt-3 text-xs">
-          <label className="flex items-center justify-between gap-2 font-medium text-neutral-700">
-            <span>Left Arm Flex</span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={leftFlex}
-              onChange={(e) => setLeftFlex(parseFloat(e.target.value))}
-              className="w-36 accent-red-600"
-            />
-          </label>
-          <label className="flex items-center justify-between gap-2 font-medium text-neutral-700">
-            <span>Right Arm Flex</span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={rightFlex}
-              onChange={(e) => setRightFlex(parseFloat(e.target.value))}
-              className="w-36 accent-red-600"
-            />
-          </label>
-          <label className="flex items-center justify-between gap-2 font-medium text-neutral-700">
-            <span>Leg Strain Flex</span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={legFlex}
-              onChange={(e) => setLegFlex(parseFloat(e.target.value))}
-              className="w-36 accent-red-600"
-            />
-          </label>
-        </div>
+        <label>
+          Flexão Esq.: {leftFlex.toFixed(2)}
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={leftFlex}
+            onChange={(e) => setLeftFlex(parseFloat(e.target.value))}
+            style={{ width: "100%" }}
+          />
+        </label>
+
+        <label>
+          Flexão Dir.: {rightFlex.toFixed(2)}
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={rightFlex}
+            onChange={(e) => setRightFlex(parseFloat(e.target.value))}
+            style={{ width: "100%" }}
+          />
+        </label>
+
+        <label>
+          Tensão Pernas: {legFlex.toFixed(2)}
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={legFlex}
+            onChange={(e) => setLegFlex(parseFloat(e.target.value))}
+            style={{ width: "100%" }}
+          />
+        </label>
       </div>
     </div>
   );
