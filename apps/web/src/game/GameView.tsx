@@ -27,6 +27,8 @@ type Enemy = {
   kind: EnemyKind;
   animatedParts: Mesh[];
   animationTime: number;
+  knockedDown: number;
+  knockDirection: number;
 };
 
 const mat = (scene: Scene, name: string, color: Color3, emissive?: Color3) => {
@@ -57,14 +59,41 @@ function buildExterior(scene: Scene) {
   const floor = MeshBuilder.CreateGround("exterior-ground", {width:34,height:7}, scene);
   floor.position.set(0,0,0); floor.material = ground; floor.isPickable = false;
   box(scene,"slimy-boundary-wall",{width:13,height:4.8,depth:0.55},new Vector3(-10,2.35,2.0),wall);
-  for(let i=0;i<12;i++){
-    const x=-16+i*1.08;
-    const drip=MeshBuilder.CreateCylinder(`slime-drip-${i}`,{height:0.45+(i%4)*0.2,diameter:0.16+(i%3)*0.06,tessellation:6},scene);
-    drip.position.set(x,4.15-(i%3)*0.18,1.68); drip.material=slime; drip.isPickable=false;
+  const slimeCore=mat(scene,"slime-organic-core",new Color3(0.22,0.30,0.105));
+  slimeCore.specularColor=new Color3(0.48,0.52,0.25);slimeCore.specularPower=72;
+  const slimeFlesh=mat(scene,"slime-fleshy-ridges",new Color3(0.34,0.39,0.14));
+  slimeFlesh.specularColor=new Color3(0.62,0.58,0.28);slimeFlesh.specularPower=96;
+  const slimeVein=mat(scene,"slime-dark-veins",new Color3(0.12,0.20,0.075));
+  const slimeWet=mat(scene,"slime-wet-highlights",new Color3(0.52,0.58,0.24),new Color3(0.035,0.045,0.008));
+  for(let row=0;row<3;row++){
+    for(let col=0;col<13;col++){
+      const x=-16.0+col*1.0+(row%2)*0.42;
+      const y=0.75+row*1.48+Math.sin(col*1.7+row)*0.18;
+      const lobe=MeshBuilder.CreateSphere("slime-wall-flesh-lobe-"+row+"-"+col,{diameter:1,segments:12},scene);
+      lobe.position.set(x,y,1.62-(col%3)*0.035);
+      lobe.scaling.set(0.72+(col%3)*0.12,0.78+(row%2)*0.16,0.24+(col%2)*0.08);
+      lobe.material=(col+row)%4===0?slimeFlesh:slimeCore;lobe.isPickable=false;
+      const nodule=MeshBuilder.CreateSphere("slime-wall-nodule-"+row+"-"+col,{diameter:0.42+(col%3)*0.12,segments:10},scene);
+      nodule.position.set(x+(col%2?0.25:-0.22),y+0.36,1.34);nodule.scaling.set(1,0.72,0.55);nodule.material=slimeFlesh;nodule.isPickable=false;
+    }
   }
-  for(let i=0;i<6;i++){
-    const pool=MeshBuilder.CreateSphere(`slime-pool-${i}`,{diameter:0.5,segments:6},scene);
-    pool.scaling.set(1.6,0.22,0.65); pool.position.set(-15+i*1.6,0.1,1.35); pool.material=slime; pool.isPickable=false;
+  for(let vein=0;vein<9;vein++){
+    const x=-15.8+vein*1.45;
+    const path=[new Vector3(x,0.35,1.28),new Vector3(x+0.22,1.1,1.22),new Vector3(x-0.12,1.85,1.22),new Vector3(x+0.28,2.55,1.22),new Vector3(x+0.05,3.35,1.24),new Vector3(x+0.34,4.55,1.3)];
+    const tube=MeshBuilder.CreateTube("slime-wall-vein-"+vein,{path,radius:0.045+(vein%3)*0.018,tessellation:8},scene);
+    tube.material=slimeVein;tube.isPickable=false;
+  }
+  for(let i=0;i<18;i++){
+    const x=-16+i*0.74;
+    const length=0.45+(i%5)*0.22;
+    const drip=MeshBuilder.CreateCapsule("slime-drip-"+i,{height:length,radius:0.10+(i%3)*0.035,tessellation:10,subdivisions:2},scene);
+    drip.position.set(x,4.35-(i%4)*0.18,1.34);drip.material=i%3===0?slimeWet:slimeFlesh;drip.isPickable=false;
+    const tip=MeshBuilder.CreateSphere("slime-drip-tip-"+i,{diameter:0.20+(i%3)*0.05,segments:10},scene);
+    tip.position.set(x,4.35-length/2-(i%4)*0.18,1.32);tip.scaling.y=1.25;tip.material=slimeWet;tip.isPickable=false;
+  }
+  for(let i=0;i<11;i++){
+    const pool=MeshBuilder.CreateSphere("slime-pool-"+i,{diameter:0.55+(i%3)*0.18,segments:10},scene);
+    pool.scaling.set(1.7,0.18,0.72);pool.position.set(-16+i*1.25,0.10,1.24);pool.material=i%3===0?slimeWet:slimeFlesh;pool.isPickable=false;
   }
   for(let i=0;i<9;i++){
     const x=-1.8+i*1.35;
@@ -178,7 +207,7 @@ function makeEnemy(scene: Scene, x: number, z: number, skin: StandardMaterial, e
     addPart(tooth,new Vector3(-0.18+i*0.12,kind==="crawler"?0.9:1.42,-0.42),new StandardMaterial(`monster-tooth-material-${kind}`,scene));
     (tooth.material as StandardMaterial).diffuseColor=new Color3(0.82,0.72,0.52);
   }
-  return {root,body,head,health:kind==="brute"?3:2,alive:true,velocity:Vector3.Zero(),attackCooldown:0,crushed:false,kind,animatedParts,animationTime:Math.random()*6};
+  return {root,body,head,health:kind==="brute"?3:2,alive:true,velocity:Vector3.Zero(),attackCooldown:0,crushed:false,kind,animatedParts,animationTime:Math.random()*6,knockedDown:0,knockDirection:1};
 }
 
 function makeWeapon(scene: Scene, id: WeaponId, position: Vector3, metal: StandardMaterial, wood: StandardMaterial, glow: StandardMaterial) {
