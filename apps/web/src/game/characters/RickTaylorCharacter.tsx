@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { createProceduralSurfaceMaps } from "./proceduralSurfaceMaps";
 
 export type RickWeaponId = "pipe" | "machete" | "shotgun";
 
@@ -787,19 +786,6 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
 
   const assets = useMemo(() => {
     const texSize = 512;
-    // Shared-quality PBR detail maps: 512px keeps mobile memory and startup cost bounded.
-    const skinSurface = createProceduralSurfaceMaps("skin", {
-      size: texSize,
-      bloodIntensity: 0.78,
-      seed: 173,
-      anisotropy: 4,
-    });
-    const denimSurface = createProceduralSurfaceMaps("denim", {
-      size: texSize,
-      bloodIntensity: 0.62,
-      seed: 347,
-      anisotropy: 4,
-    });
 
     // 1) Procedural Skin Albedo with pores, subcutaneous veins & grime
     const skinCanvas = document.createElement("canvas");
@@ -990,16 +976,16 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     const skinnedBodySkin = new THREE.MeshPhysicalMaterial({
       color: "#d9a78e",
       map: skinMap,
-      normalMap: skinSurface.normalMap,
-      normalScale: new THREE.Vector2(0.92, 0.92),
-      roughnessMap: skinSurface.roughnessMap,
-      bumpMap: skinSurface.heightMap,
-      bumpScale: 0.006,
+      normalMap: skinNormal,
+      normalScale: new THREE.Vector2(0.84, 0.84),
+      roughnessMap: skinRoughness,
+      bumpMap: skinHeight,
+      bumpScale: 0.015,
       displacementMap: skinHeight,
       displacementScale: 0.014,
       displacementBias: -0.007,
-      aoMap: skinSurface.aoMap,
-      aoMapIntensity: 0.82,
+      aoMap: skinAO,
+      aoMapIntensity: 0.75,
       roughness: 0.50,
       clearcoat: 0.48,
       clearcoatRoughness: 0.20,
@@ -1013,11 +999,11 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     const skin = new THREE.MeshPhysicalMaterial({
       color: "#d0a087",
       map: skinMap,
-      normalMap: skinSurface.normalMap,
-      normalScale: new THREE.Vector2(0.84, 0.84),
-      roughnessMap: skinSurface.roughnessMap,
-      bumpMap: skinSurface.heightMap,
-      bumpScale: 0.005,
+      normalMap: skinNormal,
+      normalScale: new THREE.Vector2(0.75, 0.75),
+      roughnessMap: skinRoughness,
+      bumpMap: skinHeight,
+      bumpScale: 0.012,
       displacementMap: skinHeight,
       displacementScale: 0.008,
       displacementBias: -0.004,
@@ -1031,11 +1017,11 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     const skinLight = new THREE.MeshPhysicalMaterial({
       color: "#e0ad91",
       map: skinMap,
-      normalMap: skinSurface.normalMap,
-      normalScale: new THREE.Vector2(0.72, 0.72),
-      roughnessMap: skinSurface.roughnessMap,
-      bumpMap: skinSurface.heightMap,
-      bumpScale: 0.004,
+      normalMap: skinNormal,
+      normalScale: new THREE.Vector2(0.65, 0.65),
+      roughnessMap: skinRoughness,
+      bumpMap: skinHeight,
+      bumpScale: 0.01,
       displacementMap: skinHeight,
       displacementScale: 0.006,
       displacementBias: -0.003,
@@ -1048,13 +1034,8 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     const denimSkinned = new THREE.MeshStandardMaterial({
       color: "#ffffff",
       map: denimMap,
-      normalMap: denimSurface.normalMap,
-      normalScale: new THREE.Vector2(0.88, 0.88),
-      roughnessMap: denimSurface.roughnessMap,
-      aoMap: denimSurface.aoMap,
-      aoMapIntensity: 0.72,
-      bumpMap: denimSurface.heightMap,
-      bumpScale: 0.004,
+      normalMap: denimNormal,
+      normalScale: new THREE.Vector2(0.78, 0.78),
       displacementMap: denimHeight,
       displacementScale: 0.009,
       displacementBias: -0.0045,
@@ -1181,7 +1162,7 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     trousersMesh.updateMorphTargets();
 
     return {
-      textures: [skinMap, skinHeight, skinRoughness, skinAO, skinNormal, denimMap, denimHeight, denimNormal, maskHeight, maskNormal, skinSurface.normalMap, skinSurface.heightMap, skinSurface.aoMap, skinSurface.roughnessMap, denimSurface.normalMap, denimSurface.heightMap, denimSurface.aoMap, denimSurface.roughnessMap],
+      textures: [skinMap, skinHeight, skinRoughness, skinAO, skinNormal, denimMap, denimHeight, denimNormal, maskHeight, maskNormal],
       materials: [skinnedBodySkin, skin, skinLight, denimSkinned, mask, boot, bootSole, leatherBelt, metal],
       geometries: [sphere, capsule, upperBodyGeo, trousersGeo, maskGeo, bootGeo],
       skin,
