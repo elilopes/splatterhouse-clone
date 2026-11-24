@@ -7,11 +7,11 @@ import RickTaylorCharacter, { type RickMotion } from "./characters/RickTaylorCha
 type Props = { onScore:(points:number)=>void; onKill:()=>void; paused:boolean; onStageChange:(stage:1|2)=>void };
 type WeaponId = "pipe" | "machete" | "shotgun";
 type EnemyKind = "crawler" | "brute" | "spitter";
-type BodyState = "alive" | "wallFlying" | "wallStuck" | "falling" | "fallen" | "grabLift" | "grabThrown" | "grabFallen" | "grabMelting" | "pipeSlam" | "gone";
+type BodyState = "alive" | "wallFlying" | "wallStuck" | "falling" | "fallen" | "macheteFalling" | "macheteMelting" | "grabLift" | "grabThrown" | "grabFallen" | "grabMelting" | "pipeSlam" | "gone";
 type EnemyState = {
   id:number; x:number; y:number; z:number; health:number; alive:boolean; kind:EnemyKind;
   knocked:number; vx:number; vy:number; vz:number; fall:number; animation:number;
-  activated:boolean; bodyState:BodyState; stickRot:number; targetZ:number; headless:boolean; grabTimer:number; spitCooldown:number;
+  activated:boolean; bodyState:BodyState; stickRot:number; targetZ:number; headless:boolean; severedArm:boolean; grabTimer:number; spitCooldown:number;
 };
 type SpitProjectile = {id:number;x:number;y:number;z:number;vx:number;vy:number;vz:number;age:number};
 type SpitSplash = {id:number;x:number;z:number;age:number};
@@ -22,13 +22,13 @@ type SeveredHead = {
 type BloodPool = { id:number; x:number; z:number; radius:number };
 type PickupState = { id:WeaponId; x:number; z:number; collected:boolean };
 type CombatEffect = {
-  id:number; kind:"gore"|"skull"; x:number; y:number; z:number;
+  id:number; kind:"gore"|"skull"|"arm"; x:number; y:number; z:number;
   vx:number; vy:number; vz:number; size:number; age:number;
 };
 
 const makeEnemy = (id:number, x:number, z:number, kind:EnemyKind, animation:number, activated=false): EnemyState => ({
   id, x, y:0, z, health:kind==="brute"?3:2, alive:true, kind, knocked:0,
-  vx:0, vy:0, vz:0, fall:0, animation, activated, bodyState:"alive", stickRot:0, targetZ:-1.72, headless:false, grabTimer:0, spitCooldown:1.1+Math.random()*1.4
+  vx:0, vy:0, vz:0, fall:0, animation, activated, bodyState:"alive", stickRot:0, targetZ:-1.72, headless:false, severedArm:false, grabTimer:0, spitCooldown:1.1+Math.random()*1.4
 });
 
 const initialEnemies: EnemyState[] = [
@@ -376,7 +376,7 @@ function EnemyHeadMesh({ kind }: {kind:EnemyKind}) {
   </group>;
 }
 
-function EnemyModel({ kind, headless=false, dissolve=0 }: {kind:EnemyKind; headless?:boolean; dissolve?:number}) {
+function EnemyModel({ kind, headless=false, missingArm=false, dissolve=0 }: {kind:EnemyKind; headless?:boolean; missingArm?:boolean; dissolve?:number}) {
   const brute=kind==="brute", crawler=kind==="crawler";
   const flesh=brute?"#75513d":kind==="spitter"?"#a05c43":"#873b36";
   return <group>
@@ -391,7 +391,7 @@ function EnemyModel({ kind, headless=false, dissolve=0 }: {kind:EnemyKind; headl
         <meshStandardMaterial color="#6e0c18" roughness={0.32}/>
       </mesh>
     )}
-    {[-1,1].map(side=><group key={side}>
+    {[-1,1].filter(side=>!(missingArm&&side===1)).map(side=><group key={side}>
       <mesh position={[side*(brute?0.58:0.47),crawler?0.56:0.9,0]} rotation={[0,0,side*0.55]}><capsuleGeometry args={[brute?0.19:0.13,0.55,6,12]}/><meshStandardMaterial color={flesh} transparent={dissolve>0} opacity={1-dissolve}/></mesh>
       <mesh position={[side*0.24,crawler?0.22:0.36,-0.06]} rotation={[0,0,side*0.25]}><capsuleGeometry args={[0.14,0.45,6,12]}/><meshStandardMaterial color={flesh} transparent={dissolve>0} opacity={1-dissolve}/></mesh>
     </group>)}
@@ -458,6 +458,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const pickups=useRef<PickupState[]>(initialPickups.map(p=>({...p})));
   const motion=useRef<RickMotion>({moving:false,attackTime:0,attackStyle:null,attackProgress:0,grabTime:0,jumpHeight:0,weapon:null});
   const pipeCombo=useRef<PipeCombo|null>(null);
+  const macheteAttackVariant=useRef<"head"|"arm">("head");
   const [phase,setPhase]=useState<1|2>(1);
   const [initialEnemiesVisible,setInitialEnemiesVisible]=useState(false);
   const [equipped,setEquipped]=useState<WeaponId|null>(null);
@@ -621,9 +622,11 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       motion.current.attackProgress=0;
       return;
     }
-    attackCooldown.current=equipped==="shotgun"?0.62:equipped==="machete"?0.48:0.42;
-    motion.current.attackTime=equipped==="shotgun"?0.34:equipped==="machete"?0.44:0.36;
-    motion.current.attackStyle=null;
+    attackCooldown.current=equipped==="shotgun"?0.62:equipped==="machete"?0.56:0.42;
+    motion.current.attackTime=equipped==="shotgun"?0.34:equipped==="machete"?0.56:0.36;
+    const macheteStyle=equipped==="machete"?macheteAttackVariant.current:null;
+    if(macheteStyle)macheteAttackVariant.current=macheteStyle==="head"?"arm":"head";
+    motion.current.attackStyle=macheteStyle==="head"?"macheteHead":macheteStyle==="arm"?"macheteArm":null;
     motion.current.attackProgress=0;
 
     if(equipped==="shotgun"){
@@ -654,25 +657,47 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     if(equipped==="machete"){
       if((e.x-px)*attackDirection.current.x+(e.z-(player.current?.position.z??0))*attackDirection.current.z<-0.35)return;
       e.alive=false;
-      e.headless=true;
-      e.bodyState="falling";
-      e.knocked=0.65;
-      e.fall=facing.current;
-      e.vx=attackDirection.current.x*2.4;
-      severedHeads.current.push({
-        id:nextEffectId.current++,
-        kind:e.kind,
-        x:e.x,
-        y:e.kind==="crawler"?1.05:1.65,
-        z:e.z,
-        vx:attackDirection.current.x*1.8,
-        vy:4.0,
-        vz:attackDirection.current.z*1.8-(phase===1?15.5:0),
-        rotZ:(Math.random()-0.5)*0.6,
-        stuck:false,
-        targetZ:targetWallZ(e.x),
-      });
-      spawnGore(e.x,1.55,e.z,20,5.2);
+      e.grabTimer=0;
+      e.bodyState="macheteFalling";
+      e.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
+      e.vx=attackDirection.current.x*1.15;
+      e.vz=attackDirection.current.z*1.15;
+      if(macheteStyle==="head"){
+        e.headless=true;
+        severedHeads.current.push({
+          id:nextEffectId.current++,
+          kind:e.kind,
+          x:e.x,
+          y:e.kind==="crawler"?1.05:1.65,
+          z:e.z,
+          vx:attackDirection.current.x*1.8,
+          vy:4.0,
+          vz:attackDirection.current.z*1.8-(phase===1?15.5:0),
+          rotZ:(Math.random()-0.5)*0.6,
+          stuck:false,
+          targetZ:targetWallZ(e.x),
+        });
+        spawnGore(e.x,e.kind==="crawler"?1.05:1.65,e.z,22,5.2);
+      }else{
+        // The alternate cut removes the creature's right arm and sends it
+        // backward in a spinning ballistic arc from the shoulder to the floor.
+        e.severedArm=true;
+        const sideX=-attackDirection.current.z;
+        const sideZ=attackDirection.current.x;
+        effects.current.push({
+          id:nextEffectId.current++,
+          kind:"arm",
+          x:e.x+0.43,
+          y:e.kind==="crawler"?0.88:1.18,
+          z:e.z+0.08,
+          vx:-attackDirection.current.x*2.9+sideX*1.05,
+          vy:4.35,
+          vz:-attackDirection.current.z*2.9+sideZ*1.05,
+          size:1,
+          age:0
+        });
+        spawnGore(e.x+0.42,e.kind==="crawler"?0.9:1.18,e.z,16,4.8);
+      }
       addBloodPool(e.x,e.z,1.05);
       onKill();
       onScore(100);
@@ -918,6 +943,46 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
         }
         return;
       }
+      if(e.bodyState==="macheteFalling"){
+        e.grabTimer+=dt;
+        const progress=THREE.MathUtils.clamp(e.grabTimer/0.58,0,1);
+        const ease=progress*progress*(3-2*progress);
+        if(group){
+          group.position.set(e.x,Math.max(0.12,0.24+Math.sin(progress*Math.PI)*0.16),e.z);
+          group.rotation.set(0,0,e.fall*1.42*ease);
+          group.scale.set(1,1,1);
+        }
+        if(e.grabTimer>=0.58){
+          e.bodyState="macheteMelting";
+          e.grabTimer=0;
+          addBloodPool(e.x,e.z,1.12);
+        }
+        return;
+      }
+      if(e.bodyState==="macheteMelting"){
+        e.grabTimer+=dt;
+        const melt=THREE.MathUtils.clamp(e.grabTimer/0.92,0,1);
+        if(group){
+          group.position.set(e.x,0.035+(1-melt)*0.1,e.z);
+          group.rotation.set(0,0,e.fall*1.42);
+          group.scale.set(1+0.1*melt,Math.max(0.018,1-melt),1+0.1*melt);
+          group.traverse(child=>{
+            if(!(child as THREE.Mesh).isMesh)return;
+            const mesh=child as THREE.Mesh;
+            const materials=Array.isArray(mesh.material)?mesh.material:[mesh.material];
+            materials.forEach(material=>{
+              const mat=material as THREE.MeshStandardMaterial;
+              if("opacity" in mat){mat.transparent=true;mat.opacity=1-melt;}
+            });
+          });
+        }
+        if(e.grabTimer>=0.92){
+          e.bodyState="gone";
+          if(group)group.visible=false;
+          setEnemyVersion(v=>v+1);
+        }
+        return;
+      }
       if(e.bodyState==="pipeSlam"){
         e.grabTimer+=dt;
         const sink=THREE.MathUtils.clamp(e.grabTimer/0.62,0,1);
@@ -1053,7 +1118,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       fx.age+=dt;fx.x+=fx.vx*dt;fx.y+=fx.vy*dt;fx.z+=fx.vz*dt;fx.vy-=9.8*dt;
       if(fx.y<0.06){fx.y=0.06;fx.vy=0;fx.vx*=0.45;fx.vz*=0.45;}
       if(fx.x<=-25.0||fx.x>=61.5){fx.vx=0;fx.vy=0;fx.vz=0;}
-      if(group){group.position.set(fx.x,fx.y,fx.z);group.rotation.z+=dt*5;}
+      if(group){group.position.set(fx.x,fx.y,fx.z);if(fx.kind==="arm"){group.rotation.x+=dt*9;group.rotation.y+=dt*11;group.rotation.z+=dt*13;}else group.rotation.z+=dt*5;}
     });
     const beforeEffects=effects.current.length;
     effects.current=effects.current.filter(fx=>fx.age<2.8);
@@ -1164,7 +1229,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     ))}
 
     {enemies.current.map((e)=>(e.alive||e.bodyState!=="alive")&&(phase!==1||e.id>14||initialEnemiesVisible)&&<group key={e.id} ref={node=>{enemyGroups.current[e.id]=node;}} position={[e.x,e.y,e.z]}>
-      <EnemyModel kind={e.kind} headless={e.headless} dissolve={e.bodyState==="grabMelting" ? THREE.MathUtils.clamp(e.grabTimer/1.05,0,1) : 0}/>
+      <EnemyModel kind={e.kind} headless={e.headless} missingArm={e.severedArm} dissolve={e.bodyState==="grabMelting" ? THREE.MathUtils.clamp(e.grabTimer/1.05,0,1) : e.bodyState==="macheteMelting" ? THREE.MathUtils.clamp(e.grabTimer/0.92,0,1) : 0}/>
       {e.bodyState==="wallStuck"&&<mesh position={[0,0.95,-0.25]}><circleGeometry args={[1.05,16]}/><meshStandardMaterial color="#4a0911" roughness={0.35}/></mesh>}
     </group>)}
 
@@ -1174,7 +1239,12 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     </group>)}
 
     {effects.current.map((fx)=><group key={fx.id} ref={node=>{effectGroups.current[fx.id]=node;}} position={[fx.x,fx.y,fx.z]}>
-      {fx.kind==="skull"?<mesh scale={fx.size}><boxGeometry args={[0.14,0.1,0.12]}/><meshStandardMaterial color="#d4cdbc" roughness={0.65}/></mesh>:<mesh scale={fx.size}><icosahedronGeometry args={[0.11,0]}/><meshStandardMaterial color="#7e0c18" roughness={0.35}/></mesh>}
+      {fx.kind==="skull"?<mesh scale={fx.size}><boxGeometry args={[0.14,0.1,0.12]}/><meshStandardMaterial color="#d4cdbc" roughness={0.65}/></mesh>:fx.kind==="arm"?<group scale={fx.size}>
+        <mesh position={[0,0.16,0]} rotation={[0,0,0.08]} castShadow><capsuleGeometry args={[0.125,0.48,7,12]}/><meshStandardMaterial color="#8e5141" roughness={0.72}/></mesh>
+        <mesh position={[0,0.37,0]} scale={[0.16,0.13,0.15]}><sphereGeometry args={[1,14,10]}/><meshStandardMaterial color="#64212a" roughness={0.55}/></mesh>
+        <mesh position={[0,-0.18,0]} scale={[0.14,0.13,0.13]}><sphereGeometry args={[1,14,10]}/><meshStandardMaterial color="#a05c43" roughness={0.72}/></mesh>
+        <mesh position={[0,-0.29,0]} rotation={[0,0,-0.12]}><capsuleGeometry args={[0.075,0.16,5,8]}/><meshStandardMaterial color="#a05c43" roughness={0.72}/></mesh>
+      </group>:<mesh scale={fx.size}><icosahedronGeometry args={[0.11,0]}/><meshStandardMaterial color="#7e0c18" roughness={0.35}/></mesh>}
     </group>)}
 
     {spitProjectiles.current.map(p=><group key={p.id} ref={node=>{spitGroups.current[p.id]=node;}} position={[p.x,p.y,p.z]}>
