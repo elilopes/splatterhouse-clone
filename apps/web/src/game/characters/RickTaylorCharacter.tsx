@@ -1209,7 +1209,7 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     const oppositeSwing = motion.moving ? Math.max(0, Math.cos(phase + Math.PI)) : 0;
     const gait = motion.moving ? stride : 0;
     const activeWeapon = equippedWeapon ?? motion.weapon;
-    const attackDur = activeWeapon === "shotgun" ? 0.34 : activeWeapon === "pipe" ? 0.68 : activeWeapon === "machete" ? 0.44 : 0.36;
+    const attackDur = activeWeapon === "shotgun" ? 0.34 : activeWeapon === "pipe" ? 0.68 : activeWeapon === "machete" ? 0.56 : 0.36;
     const p = motion.attackTime > 0
       ? activeWeapon === "pipe"
         ? THREE.MathUtils.clamp(motion.attackProgress, 0, 1)
