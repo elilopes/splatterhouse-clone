@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   Camera, Color3, Engine, HemisphericLight, Mesh, MeshBuilder,
   Scene, StandardMaterial, Vector3, FreeCamera, DirectionalLight, TransformNode
@@ -221,7 +222,7 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
   const joystickRef = useRef<HTMLDivElement>(null);
   const joystickInput = useRef({ x: 0, y: 0, pointerId: -1 });
   const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
-  const updateJoystick = (event: React.PointerEvent<HTMLDivElement>) => {
+  const updateJoystick = (event: ReactPointerEvent<HTMLDivElement>) => {
     const base = joystickRef.current;
     if (!base) return;
     const rect = base.getBoundingClientRect();
