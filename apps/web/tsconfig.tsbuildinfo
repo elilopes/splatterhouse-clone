@@ -1,1 +1,1 @@
-{"root":["./src/App.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/firebase/client.ts","./src/game/GameView.tsx","./src/game/save.ts","./src/game/types.ts","./src/game/characters/RickProcedural.ts"],"version":"5.9.3"}
+{"root":["./src/App.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/firebase/client.ts","./src/game/GameView.tsx","./src/game/save.ts","./src/game/types.ts","./src/game/characters/RickTaylorCharacter.tsx","./src/game/characters/RickTaylorCharacter3DHD.tsx","./src/game/characters/proceduralSurfaceMaps.ts"],"errors":true,"version":"5.9.3"}

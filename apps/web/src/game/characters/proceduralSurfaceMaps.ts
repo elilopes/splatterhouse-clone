@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { MeshStandardNodeMaterial } from "three/webgpu";
-import { attribute, float, normalMap as normalMapNode, texture, uv, vec2 } from "three/tsl";
+import { attribute, color, float, normalMap as normalMapNode, texture, uv, vec2 } from "three/tsl";
 
 export type ProceduralPBRMaps = {
   normalMap: THREE.DataTexture;
@@ -18,6 +18,7 @@ export type WebGPUSurfaceMaterialOptions = {
   roughnessMultiplier?: number;
   metalness?: number;
   useSecondaryUVForAO?: boolean;
+  vertexColors?: boolean;
 };
 
 function hash2D(x: number, y: number, seed: number): number {
@@ -284,16 +285,17 @@ export function createWebGPUSurfaceNodeMaterial(
     roughnessMultiplier = 1.0,
     metalness = 0.0,
     useSecondaryUVForAO = true,
+    vertexColors = true,
   } = options;
 
   const material = new MeshStandardNodeMaterial();
-  const baseColor = new THREE.Color(baseColorHex);
+  const baseColor = color(baseColorHex);
   const primaryUV = uv();
-  const aoUV = useSecondaryUVForAO ? uv(attribute("uv2")) : primaryUV;
+  const aoUV = useSecondaryUVForAO ? attribute("uv2", "vec2") : primaryUV;
 
   material.colorNode = albedoMap
     ? texture(albedoMap, primaryUV).mul(baseColor)
-    : float(1.0).mul(baseColor);
+    : baseColor;
 
   material.normalNode = normalMapNode(
     texture(maps.normalMap, primaryUV),
@@ -306,7 +308,7 @@ export function createWebGPUSurfaceNodeMaterial(
   );
 
   material.metalness = metalness;
-  material.vertexColors = true;
+  material.vertexColors = vertexColors;
   material.needsUpdate = true;
 
   return material;

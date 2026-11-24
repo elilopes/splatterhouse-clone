@@ -133,18 +133,17 @@ function createUpperBodySkinnedGeometry() {
   const morphFlexLeft: number[] = [];
   const morphFlexRight: number[] = [];
 
-  // 1) Torso + Neck loft in root space (y = 0.76 -> 2.08, matching torso origin y = 1.05)
+  // 1) Torso + Neck loft in root space (y = 0.96 -> 2.08, tapered cleanly inside jeans waistband)
   const torsoProfile: Array<[number, number, number]> = [
-    [-0.29, 0.285, 0.205],
-    [-0.20, 0.305, 0.215],
-    [-0.06, 0.315, 0.210],
-    [0.10, 0.295, 0.202],
-    [0.26, 0.345, 0.222],
-    [0.44, 0.415, 0.245],
-    [0.59, 0.445, 0.254],
-    [0.72, 0.420, 0.232],
-    [0.83, 0.305, 0.192],
-    [0.94, 0.215, 0.168],
+    [-0.09, 0.235, 0.155],
+    [-0.02, 0.275, 0.182],
+    [0.08, 0.295, 0.198],
+    [0.24, 0.340, 0.220],
+    [0.44, 0.410, 0.244],
+    [0.59, 0.440, 0.252],
+    [0.72, 0.410, 0.230],
+    [0.83, 0.300, 0.190],
+    [0.94, 0.210, 0.166],
     [1.03, 0.165, 0.148],
   ];
 
@@ -243,7 +242,7 @@ function createUpperBodySkinnedGeometry() {
       let b3 = BONE_HEAD, w3 = 0;
 
       if (yLocal < 0.05) {
-        const t = smoothstep(-0.29, 0.05, yLocal);
+        const t = smoothstep(-0.09, 0.05, yLocal);
         b0 = BONE_HIPS;
         w0 = 1 - t * 0.72;
         b1 = BONE_SPINE;
@@ -255,12 +254,12 @@ function createUpperBodySkinnedGeometry() {
         b1 = BONE_CHEST;
         w1 = t * 0.88;
       } else if (yLocal < 0.79) {
-        const latFactor = smoothstep(0.24, 0.43, Math.abs(x)) * Math.exp(-Math.pow((yLocal - 0.59) / 0.16, 2));
+        const latFactor = smoothstep(0.28, 0.44, Math.abs(x)) * Math.exp(-Math.pow((yLocal - 0.59) / 0.15, 2));
         const armBone = x < 0 ? BONE_L_SHOULDER : BONE_R_SHOULDER;
         b0 = BONE_CHEST;
-        w0 = 1 - latFactor * 0.36;
+        w0 = 1 - latFactor * 0.24;
         b1 = armBone;
-        w1 = latFactor * 0.36;
+        w1 = latFactor * 0.24;
       } else if (yLocal < 0.93) {
         const t = smoothstep(0.79, 0.93, yLocal);
         b0 = BONE_CHEST;
@@ -308,32 +307,32 @@ function createUpperBodySkinnedGeometry() {
 
       // Curved humeral centerline for natural anatomical sweep & undulation
       let cx: number;
-      if (t < 0.22) {
-        const k = smoothstep(0, 0.22, t);
-        cx = side * THREE.MathUtils.lerp(0.34, 0.475, k);
-      } else if (t < 0.45) {
-        const k = smoothstep(0.22, 0.45, t);
-        cx = side * THREE.MathUtils.lerp(0.475, 0.495, k);
+      if (t < 0.26) {
+        const k = smoothstep(0, 0.26, t);
+        cx = side * THREE.MathUtils.lerp(0.27, 0.455, k);
+      } else if (t < 0.50) {
+        const k = smoothstep(0.26, 0.50, t);
+        cx = side * THREE.MathUtils.lerp(0.455, 0.495, k);
       } else {
-        const k = smoothstep(0.45, 1.0, t);
+        const k = smoothstep(0.50, 1.0, t);
         cx = side * THREE.MathUtils.lerp(0.495, 0.55, k);
       }
 
-      const cy = THREE.MathUtils.lerp(1.68, 1.11, t) + Math.sin(t * Math.PI) * 0.012;
-      const cz = THREE.MathUtils.lerp(0.01, -0.015, smoothstep(0.18, 1.0, t));
+      const cy = THREE.MathUtils.lerp(1.66, 1.11, t) + Math.sin(t * Math.PI) * 0.010;
+      const cz = THREE.MathUtils.lerp(0.005, -0.015, smoothstep(0.18, 1.0, t));
 
-      // End-cap closure smoothing at t=0 and t=1
-      const endPinch = t < 0.04 ? smoothstep(0, 0.04, t) * 0.35 + 0.65 : t > 0.96 ? smoothstep(1.0, 0.96, t) * 0.30 + 0.70 : 1.0;
+      // Smooth shoulder socket taper into chest; keep elbow at full 1.0 to match forearm capsule (r = 0.12)
+      const endPinch = t < 0.14 ? smoothstep(0, 0.14, t) * 0.24 + 0.76 : 1.0;
 
-      // Base radius tapers cleanly from athletic shoulder to elbow (~0.115 matching forearm capsule 0.12)
-      const baseR = THREE.MathUtils.lerp(0.132, 0.114, smoothstep(0.15, 1.0, t));
+      // Base radius transitions smoothly from athletic shoulder to exact forearm capsule radius (0.120)
+      const baseR = THREE.MathUtils.lerp(0.130, 0.120, smoothstep(0.15, 1.0, t));
 
-      // Anatomical undulation along outer/front/back profile
-      const deltoidCap = Math.exp(-Math.pow((t - 0.17) / 0.105, 2));
-      const deltoidDip = Math.exp(-Math.pow((t - 0.34) / 0.068, 2));
-      const bicepBell = Math.exp(-Math.pow((t - 0.56) / 0.145, 2));
-      const tricepBell = Math.exp(-Math.pow((t - 0.49) / 0.135, 2));
-      const elbowCondyle = Math.exp(-Math.pow((t - 0.91) / 0.07, 2));
+      // Anatomical undulation along outer/front/back profile (no protruding deltoid shelf)
+      const deltoidCap = Math.exp(-Math.pow((t - 0.20) / 0.135, 2));
+      const deltoidDip = Math.exp(-Math.pow((t - 0.37) / 0.075, 2));
+      const bicepBell = Math.exp(-Math.pow((t - 0.58) / 0.15, 2));
+      const tricepBell = Math.exp(-Math.pow((t - 0.50) / 0.14, 2));
+      const elbowCondyle = Math.exp(-Math.pow((t - 0.90) / 0.08, 2));
 
       for (let ix = 0; ix <= armSegs; ix++) {
         const u = ix / armSegs;
@@ -343,25 +342,25 @@ function createUpperBodySkinnedGeometry() {
         const out = cosA * side; // +1 outer lateral, -1 inner ribcage
         const front = -sinA; // +1 anterior bicep (-Z), -1 posterior tricep (+Z)
 
-        // Sculpted deltoid cap -> crisp V-insertion dip -> high bicep/tricep swell
-        const deltSculpt = deltoidCap * (0.036 * Math.max(0, out + 0.32) + 0.014 * Math.max(0, front + 0.25));
-        const insertionGroove = deltoidDip * (0.019 * Math.max(0, out + 0.25) + 0.008);
-        const bicepSculpt = bicepBell * (0.035 * Math.pow(Math.max(0, front), 1.25) + 0.010 * Math.max(0, out));
-        const tricepSculpt = tricepBell * (0.030 * Math.pow(Math.max(0, -front), 1.2) * (0.7 + 0.3 * Math.abs(out)));
+        // Smooth rounded deltoid cap -> subtle insertion dip -> bicep/tricep swell
+        const deltSculpt = deltoidCap * (0.022 * Math.max(0, out + 0.28) + 0.012 * Math.max(0, front + 0.20));
+        const insertionGroove = deltoidDip * (0.011 * Math.max(0, out + 0.20) + 0.005);
+        const bicepSculpt = bicepBell * (0.028 * Math.pow(Math.max(0, front), 1.25) + 0.008 * Math.max(0, out));
+        const tricepSculpt = tricepBell * (0.024 * Math.pow(Math.max(0, -front), 1.2) * (0.7 + 0.3 * Math.abs(out)));
         const lateralGroove =
           Math.exp(-Math.pow(front / 0.32, 2)) *
           Math.max(0, out) *
           Math.exp(-Math.pow((t - 0.54) / 0.17, 2)) *
-          0.009;
-        const medialFlatten = Math.max(0, -out) * 0.015 * (1 - smoothstep(0.65, 0.95, t));
-        const condyleFlare = elbowCondyle * Math.abs(cosA) * 0.008;
+          0.006;
+        const medialFlatten = Math.max(0, -out) * 0.012 * (1 - smoothstep(0.55, 0.85, t));
+        const condyleFlare = elbowCondyle * Math.abs(cosA) * 0.004 * (1 - smoothstep(0.92, 1.0, t));
 
         const r =
           (baseR + deltSculpt - insertionGroove + bicepSculpt + tricepSculpt - lateralGroove - medialFlatten + condyleFlare) *
           endPinch;
 
         const px = cx + cosA * r;
-        const pz = cz + sinA * (r * (0.98 + 0.06 * bicepBell));
+        const pz = cz + sinA * (r * (0.98 + 0.05 * bicepBell * (1 - smoothstep(0.75, 1.0, t))));
 
         positions.push(px, cy, pz);
         uvs.push(u * 1.4, t * 1.8);
@@ -389,21 +388,21 @@ function createUpperBodySkinnedGeometry() {
         }
         colors.push(rCol, gCol, bCol);
 
-        // Smooth dual-bone skinning: chest <-> shoulder <-> elbow
+        // Smooth dual-bone skinning: chest <-> shoulder <-> elbow (high elbow weight at t=1 prevents joint gap)
         let b0 = armBone, w0 = 1;
         let b1 = BONE_CHEST, w1 = 0;
-        if (t < 0.32) {
-          const blend = smoothstep(0.0, 0.32, t);
+        if (t < 0.38) {
+          const blend = smoothstep(0.0, 0.38, t);
           b0 = BONE_CHEST;
-          w0 = (1 - blend) * 0.72;
+          w0 = (1 - blend) * 0.88;
           b1 = armBone;
           w1 = 1 - w0;
-        } else if (t > 0.80) {
-          const blend = smoothstep(0.80, 1.0, t);
+        } else if (t > 0.72) {
+          const blend = smoothstep(0.72, 1.0, t);
           b0 = armBone;
-          w0 = 1 - blend * 0.38;
+          w0 = 1 - blend * 0.92;
           b1 = elbowBone;
-          w1 = blend * 0.38;
+          w1 = blend * 0.92;
         }
         pushSkinWeights(skinIndices, skinWeights, b0, w0, b1, w1);
 
@@ -590,12 +589,13 @@ function createTrousersSkinnedGeometry() {
 }
 
 /**
- * Contoured Terror Mask faceplate geometry sculpted with brow ridge, cheekbones,
- * sunken orbital sockets, nasal cavity, and fanged skull jaw.
+ * Contoured Terror Mask faceplate geometry sculpted ONLY over the front face (-Z)
+ * with brow ridge, cheekbones, sunken orbital sockets, nasal cavity, and fanged jaw,
+ * leaving Rick's cranium and back of the head (nuca) completely open and visible.
  */
 function createTerrorMaskGeometry() {
   const rings = 38;
-  const segs = 40;
+  const segs = 32;
   const positions: number[] = [];
   const uvs: number[] = [];
   const colors: number[] = [];
@@ -603,57 +603,59 @@ function createTerrorMaskGeometry() {
 
   for (let iy = 0; iy <= rings; iy++) {
     const v = iy / rings;
-    const y = THREE.MathUtils.lerp(-0.29, 0.31, v);
-    const vNorm = THREE.MathUtils.clamp((y + 0.29) / 0.60, 0, 1);
+    const y = THREE.MathUtils.lerp(-0.24, 0.21, v);
+    const vNorm = THREE.MathUtils.clamp((y + 0.24) / 0.45, 0, 1);
 
-    // Skull outline narrower at jaw, wider at temples/cheekbones
-    const jawTaper = smoothstep(0.0, 0.46, vNorm);
-    const domeTaper = Math.sin(Math.pow(vNorm, 0.78) * Math.PI);
-    const rx = THREE.MathUtils.lerp(0.18, 0.325, jawTaper) * (0.68 + 0.32 * domeTaper);
-    const rz = THREE.MathUtils.lerp(0.16, 0.27, jawTaper) * (0.62 + 0.38 * domeTaper);
+    // Skull outline narrower at chin, wider at temples/cheekbones, rounded across brow
+    const jawTaper = smoothstep(0.0, 0.48, vNorm);
+    const domeTaper = Math.sin(Math.pow(vNorm, 0.82) * Math.PI);
+    const rx = THREE.MathUtils.lerp(0.18, 0.282, jawTaper) * (0.76 + 0.24 * domeTaper);
+    const rz = THREE.MathUtils.lerp(0.18, 0.268, jawTaper) * (0.75 + 0.25 * domeTaper);
 
     for (let ix = 0; ix <= segs; ix++) {
       const u = ix / segs;
-      const angle = u * Math.PI * 2;
+      // Front face arc only (-158° to -22°), centered straight forward (-90°, -Z)
+      const angle = THREE.MathUtils.lerp(-Math.PI * 0.88, -Math.PI * 0.12, u);
       const cosA = Math.cos(angle);
       const sinA = Math.sin(angle);
       const front = Math.max(0, -sinA);
+      const edgeRim = smoothstep(0.0, 0.14, Math.sin(u * Math.PI)) * smoothstep(0.0, 0.12, Math.sin(vNorm * Math.PI));
 
-      const xBase = cosA * rx;
+      const xBase = cosA * rx * (0.94 + 0.06 * edgeRim);
       // Sculpted facial reliefs on anterior mask (-Z)
-      const brow = Math.exp(-Math.pow((y - 0.14) / 0.045, 2)) * (1 - smoothstep(0.14, 0.26, Math.abs(xBase))) * front;
-      const cheek = Math.exp(-Math.pow((y + 0.01) / 0.05, 2)) * Math.exp(-Math.pow((Math.abs(xBase) - 0.18) / 0.06, 2)) * front;
+      const brow = Math.exp(-Math.pow((y - 0.11) / 0.04, 2)) * (1 - smoothstep(0.13, 0.24, Math.abs(xBase))) * front;
+      const cheek = Math.exp(-Math.pow((y + 0.01) / 0.048, 2)) * Math.exp(-Math.pow((Math.abs(xBase) - 0.155) / 0.055, 2)) * front;
       const eyeSocket =
-        Math.exp(-Math.pow((y - 0.07) / 0.048, 2)) *
-        Math.exp(-Math.pow((Math.abs(xBase) - 0.115) / 0.055, 2)) *
+        Math.exp(-Math.pow((y - 0.055) / 0.044, 2)) *
+        Math.exp(-Math.pow((Math.abs(xBase) - 0.105) / 0.052, 2)) *
         front;
       const noseSocket =
-        Math.exp(-Math.pow((y + 0.05) / 0.055, 2)) *
-        Math.exp(-Math.pow(xBase / 0.042, 2)) *
+        Math.exp(-Math.pow((y + 0.045) / 0.048, 2)) *
+        Math.exp(-Math.pow(xBase / 0.038, 2)) *
         front;
       const mouthSlot =
-        Math.exp(-Math.pow((y + 0.185) / 0.045, 2)) *
-        Math.exp(-Math.pow(xBase / 0.135, 2)) *
+        Math.exp(-Math.pow((y + 0.155) / 0.04, 2)) *
+        Math.exp(-Math.pow(xBase / 0.12, 2)) *
         front;
       const teethRidge =
-        Math.exp(-Math.pow((y + 0.185) / 0.025, 2)) *
-        (0.5 + 0.5 * Math.cos(xBase * 52)) *
-        (1 - smoothstep(0.10, 0.15, Math.abs(xBase))) *
+        Math.exp(-Math.pow((y + 0.155) / 0.022, 2)) *
+        (0.5 + 0.5 * Math.cos(xBase * 54)) *
+        (1 - smoothstep(0.09, 0.13, Math.abs(xBase))) *
         front;
 
-      const zOffset = -0.045 * front;
-      const relief = brow * 0.028 + cheek * 0.024 - eyeSocket * 0.065 - noseSocket * 0.052 - mouthSlot * 0.05 + teethRidge * 0.024;
+      const zOffset = -0.035 * edgeRim;
+      const relief = brow * 0.026 + cheek * 0.022 - eyeSocket * 0.062 - noseSocket * 0.048 - mouthSlot * 0.045 + teethRidge * 0.022;
       const z = sinA * rz + zOffset - relief * front;
 
       positions.push(xBase, y, z);
       uvs.push(u, v);
 
-      const darkCav = Math.min(1, eyeSocket * 1.45 + noseSocket * 1.4 + mouthSlot * 1.25 * (1 - teethRidge * 0.75));
-      let rC = 0.96 - darkCav * 0.85;
-      let gC = 0.94 - darkCav * 0.84;
-      let bC = 0.88 - darkCav * 0.78;
+      const darkCav = Math.min(1, eyeSocket * 1.55 + noseSocket * 1.45 + mouthSlot * 1.3 * (1 - teethRidge * 0.75));
+      let rC = 0.96 - darkCav * 0.88;
+      let gC = 0.94 - darkCav * 0.87;
+      let bC = 0.88 - darkCav * 0.80;
       // Dried blood smudge along lower left mask mandible
-      const jawBlood = Math.exp(-(Math.pow((xBase + 0.11) / 0.08, 2) + Math.pow((y + 0.19) / 0.07, 2))) * front * (1 - darkCav * 0.5);
+      const jawBlood = Math.exp(-(Math.pow((xBase + 0.10) / 0.075, 2) + Math.pow((y + 0.15) / 0.06, 2))) * front * (1 - darkCav * 0.5);
       if (jawBlood > 0.12) {
         rC = THREE.MathUtils.lerp(rC, 0.45, jawBlood * 0.8);
         gC = THREE.MathUtils.lerp(gC, 0.05, jawBlood * 0.85);
@@ -1055,6 +1057,7 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
       clearcoat: 0.38,
       clearcoatRoughness: 0.22,
       vertexColors: true,
+      side: THREE.DoubleSide,
     });
 
     const boot = new THREE.MeshPhysicalMaterial({
@@ -1229,10 +1232,10 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     let torsoRotZ = motion.moving ? -gait * 0.035 : 0;
 
     let rShoulderX = gait * 0.52 + 0.10;
-    let rShoulderZ = -0.08;
+    let rShoulderZ = 0.06;
     let rElbowX = 0.52;
     let lShoulderX = -gait * 0.52 + 0.28;
-    let lShoulderZ = 0.1;
+    let lShoulderZ = -0.06;
     let lElbowX = 0.72;
 
     if (activeWeapon === "shotgun") {
@@ -1690,13 +1693,14 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
         </group>
       </group>
 
-      {/* Head & Sculpted Terror Mask synced to headBone */}
+      {/* Head, Nuca & Sculpted Front Terror Mask synced to headBone */}
       <group ref={headMount} position={[0, 2.09, 0.015]}>
-        {ellipsoid(assets.sphere, assets.skin, [0, 0.02, 0.02], [0.27, 0.33, 0.24])}
-        <mesh geometry={assets.maskGeo} material={assets.mask} position={[0, 0.01, -0.055]} castShadow receiveShadow />
-        {/* Mask leather strap wrapping cranium */}
-        <mesh position={[0, 0.08, 0.02]} rotation={[Math.PI / 2, 0, 0]} scale={[1.05, 0.96, 1]} castShadow>
-          <torusGeometry args={[0.255, 0.018, 8, 32]} />
+        {ellipsoid(assets.sphere, assets.skin, [0, 0.02, 0.025], [0.268, 0.325, 0.255])}
+        {ellipsoid(assets.sphere, assets.skin, [0, -0.14, 0.02], [0.165, 0.14, 0.155])}
+        <mesh geometry={assets.maskGeo} material={assets.mask} position={[0, 0.01, -0.015]} castShadow receiveShadow />
+        {/* Mask leather strap wrapping cranium and nuca */}
+        <mesh position={[0, 0.06, 0.025]} rotation={[Math.PI / 2, 0, 0]} scale={[1.03, 0.99, 1]} castShadow>
+          <torusGeometry args={[0.262, 0.018, 8, 32]} />
           <primitive object={assets.leatherBelt} attach="material" />
         </mesh>
       </group>

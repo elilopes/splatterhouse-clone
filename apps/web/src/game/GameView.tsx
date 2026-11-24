@@ -64,7 +64,7 @@ const initialPickups: PickupState[] = [
 type WorldControls = {
   horizontal:number; depth:number; attack:boolean; grab:boolean; jump:boolean; pickup:boolean;
 };
-type WorldProps = Omit<Props, "graphicsQuality"> & { controls:React.MutableRefObject<WorldControls>; useHDCharacter:boolean };
+type WorldProps = Omit<Props, "graphicsQuality"> & { controls:React.MutableRefObject<WorldControls>; useHDCharacter:boolean; zoomTargetRef:React.MutableRefObject<number> };
 type PipeAttackStyle = "bat" | "overhead";
 type PipeCombo = { steps:PipeAttackStyle[]; elapsed:number; stepIndex:number; hit:boolean };
 const PIPE_STRIKE_DURATION = 0.72;
@@ -441,9 +441,10 @@ function WeaponModel({ id }: {id:WeaponId}) {
   </group>;
 }
 
-function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:WorldProps) {
+function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoomTargetRef}:WorldProps) {
   const { camera, size } = useThree();
   const player=useRef<THREE.Group>(null);
+  const hdZoomCurrent=useRef(1);
   const enemyGroups=useRef<Record<number, THREE.Group|null>>({});
   const headGroups=useRef<Record<number, THREE.Group|null>>({});
   const effectGroups=useRef<Record<number, THREE.Group|null>>({});
@@ -467,7 +468,6 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
   const [phase,setPhase]=useState<1|2>(1);
   const [initialEnemiesVisible,setInitialEnemiesVisible]=useState(false);
   const [equipped,setEquipped]=useState<WeaponId|null>(null);
-  const [ammo,setAmmo]=useState(16);
   const facing=useRef(1);
   const attackDirection=useRef({x:1,z:0});
   const upperDeckAccess=useRef(false);
@@ -541,33 +541,60 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
     setEnemyVersion(v=>v+1);
   };
 
-  const nearest=(range:number, zRange=2.0)=>{
+  const nearest=(range:number, zRange=2.0, minDot=-0.35)=>{
     let result:EnemyState|null=null;
-    let best=range;
+    let bestScore=Infinity;
     const px=player.current?.position.x??0;
     const pz=player.current?.position.z??0;
+    const fx=attackDirection.current.x;
+    const fz=attackDirection.current.z;
+    const effectiveRange=phase===2?range+0.35:range;
     for(const e of enemies.current){
       if(!e.alive)continue;
       if(phase===1&&e.id<=14&&!initialEnemiesVisible)continue;
-      if(Math.abs(e.z-pz)>zRange)continue;
-      const d=Math.hypot(e.x-px,e.z-pz);
-      if(d<best){best=d;result=e;}
+      const dx=e.x-px,dz=e.z-pz;
+      const d=Math.hypot(dx,dz);
+      if(d>effectiveRange)continue;
+      const forward=dx*fx+dz*fz;
+      if(phase===1){
+        if(Math.abs(dz)>zRange)continue;
+        if(forward<minDot)continue;
+        if(d<bestScore){bestScore=d;result=e;}
+      }else{
+        const lateral=Math.abs(dx*(-fz)+dz*fx);
+        const allowCloseHug=d<=1.25&&forward>=-0.6;
+        if(!allowCloseHug&&(forward<minDot||lateral>Math.max(1.35,effectiveRange*0.72)))continue;
+        const score=d-Math.max(0,forward)*0.25;
+        if(score<bestScore){bestScore=score;result=e;}
+      }
     }
     return result;
   };
 
   const findShotgunTarget=(px:number,pz:number)=>{
+    const fx=attackDirection.current.x;
+    const fz=attackDirection.current.z;
     let bestTarget:EnemyState|null=null;
-    let bestDist=9.5;
+    let bestScore=Infinity;
+    const maxRange=phase===2?12.0:9.5;
     for(const e of enemies.current){
       if(!e.alive)continue;
       if(phase===1&&e.id<=14&&!initialEnemiesVisible)continue;
-      if(Math.abs(e.z-pz)>1.8)continue;
       const dx=e.x-px,dz=e.z-pz;
-      const dot=dx*attackDirection.current.x+dz*attackDirection.current.z;
-      if(dot<-0.35)continue;
+      const forward=dx*fx+dz*fz;
+      const lateral=Math.abs(dx*(-fz)+dz*fx);
       const d=Math.hypot(dx,dz);
-      if(d<bestDist){bestDist=d;bestTarget=e;}
+      if(d>maxRange)continue;
+      if(phase===1){
+        if(Math.abs(dz)>1.85)continue;
+        if(forward<-0.35)continue;
+      }else{
+        const coneWidth=1.35+Math.max(0,forward)*0.3;
+        if(lateral>coneWidth)continue;
+        if(forward<-0.55||(forward<0.05&&d>1.35))continue;
+      }
+      const score=d+lateral*0.55;
+      if(score<bestScore){bestScore=score;bestTarget=e;}
     }
     return bestTarget;
   };
@@ -589,14 +616,12 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
 
   const applyPipeImpact=(style:PipeAttackStyle)=>{
     if(!player.current)return;
-    const e=nearest(2.8,1.8);
+    const e=nearest(2.8,1.8,-0.4);
     if(!e)return;
-    const px=player.current.position.x;
-    if((e.x-px)*attackDirection.current.x+(e.z-(player.current?.position.z??0))*attackDirection.current.z < -0.4)return;
 
     e.alive=false;
     e.grabTimer=0;
-    e.fall=attackDirection.current.x||attackDirection.current.z;
+    e.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
     e.vx=0;e.vy=0;e.vz=0;
     if(style==="bat"){
       // Baseball-bat arc: launch the creature backward into the fleshy wall or a foreground tree.
@@ -651,8 +676,6 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
     motion.current.attackProgress=0;
 
     if(equipped==="shotgun"){
-      if(ammo<=0)return;
-      setAmmo(a=>a-1);
       const pz=player.current?.position.z??0;
       const py=player.current?.position.y??0;
       const target=findShotgunTarget(px,pz);
@@ -665,8 +688,8 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
         const localX=dx*(-fz)+dz*fx;
         const headY=target.y+(target.kind==="crawler"?1.05:1.65);
         const muzzleY=py+1.34;
-        motion.current.shotgunAimPitch=THREE.MathUtils.clamp(Math.atan2(headY-muzzleY,localFwd),-0.22,0.52);
-        motion.current.shotgunAimYaw=THREE.MathUtils.clamp(-Math.atan2(localX,localFwd),-0.55,0.55);
+        motion.current.shotgunAimPitch=THREE.MathUtils.clamp(Math.atan2(headY-muzzleY,localFwd),-0.65,0.55);
+        motion.current.shotgunAimYaw=THREE.MathUtils.clamp(-Math.atan2(localX,localFwd),-0.65,0.65);
       }else{
         motion.current.shotgunAimPitch=0.18;
         motion.current.shotgunAimYaw=0;
@@ -675,11 +698,10 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
       return;
     }
 
-    const e=nearest(equipped==="machete"?2.35:1.65);
+    const e=nearest(equipped==="machete"?2.35:1.65,2.0,equipped==="machete"?-0.35:-0.2);
     if(!e)return;
 
     if(equipped==="machete"){
-      if((e.x-px)*attackDirection.current.x+(e.z-(player.current?.position.z??0))*attackDirection.current.z<-0.35)return;
       e.alive=false;
       e.grabTimer=0;
       e.bodyState="macheteFalling";
@@ -728,10 +750,10 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
       setEnemyVersion(v=>v+1);
     }else{
       // Unarmed punch — original mechanic preserved + extra blood splatter
-      if((e.x-px)*attackDirection.current.x+(e.z-(player.current?.position.z??0))*attackDirection.current.z<0)return;
       e.health--;
       e.vx=attackDirection.current.x*3.2;
       e.vz=attackDirection.current.z*3.2;
+      e.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
       spawnGore(e.x,1.15,e.z,e.health<=0?16:10,4.0);
       if(e.health<=0)kill(e);
     }
@@ -739,16 +761,15 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
 
   const doGrab=()=>{
     if(grabCooldown.current>0||!player.current)return;
-    const e=nearest(1.95,1.65);
+    const e=nearest(1.95,1.65,-0.25);
     if(!e)return;
-    if((e.x-player.current.position.x)*attackDirection.current.x+(e.z-player.current.position.z)*attackDirection.current.z < -0.25)return;
     grabCooldown.current=1.35;
     motion.current.grabTime=1.35;
     // Hold the enemy in front of Rick before applying the backward throw impulse.
     e.bodyState="grabLift";
     e.alive=false;
     e.grabTimer=0;
-    e.fall=-(attackDirection.current.x||attackDirection.current.z);
+    e.fall=-(attackDirection.current.x||attackDirection.current.z||facing.current);
     e.vx=0;e.vy=0;e.vz=0;
     e.x=player.current.position.x+attackDirection.current.x*0.82;
     e.z=player.current.position.z+attackDirection.current.z*0.82;
@@ -785,47 +806,55 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
         player.current.position.x+=stepX;
         player.current.position.z=THREE.MathUtils.clamp(player.current.position.z+stepZ,-1.35,1.35);
       }else{
-        const px=player.current.position.x,pz=player.current.position.z;
+        const px=player.current.position.x,pz=player.current.position.z,py=player.current.position.y;
         const nextX=THREE.MathUtils.clamp(px+stepX,-15.1,15.1);
         const nextZ=THREE.MathUtils.clamp(pz+stepZ,-17.25,28.4);
-        const onStairNow=Math.abs(px)<=2.95&&pz>=-2.45&&pz<=5.35&&player.current.position.y>0.05;
-        const onDeckNow=player.current.position.y>2.5&&Math.abs(px)<=12.0&&pz>=-17.25&&pz<=-1.55;
-        const entersStairFromFront=pz>4.75&&nextZ<pz&&Math.abs(nextX)<=2.85&&nextZ>=-2.45&&nextZ<=5.35;
+        const onDeckNow=upperDeckAccess.current&&py>=2.5&&Math.abs(px)<=12.0&&pz>=-17.25&&pz<=-1.65;
+        const inStairCorridor=Math.abs(px)<=2.95&&pz>=-2.45&&pz<=5.55;
+        const onStairNow=upperDeckAccess.current&&inStairCorridor;
+        const entersStairFromFront=pz>=4.4&&Math.abs(px)<=2.95&&Math.abs(nextX)<=2.82&&nextZ<=5.6&&nextZ>=4.0;
         if(entersStairFromFront)upperDeckAccess.current=true;
-        // Ground-level access to the stair footprint is allowed only from its front;
-        // an already elevated player may descend from the upper landing.
-        const blockedByStair=(x:number,z:number)=>Math.abs(x)<3.25&&z>-2.55&&z<5.55&&!onStairNow&&!onDeckNow&&!entersStairFromFront;
+        const canUseStairFootprint=onDeckNow||onStairNow||entersStairFromFront;
+        // Ground-level access to the stair footprint is allowed cleanly from its front;
+        // elevated players stay within the stair rails or upper deck, and overlapping positions can always exit.
+        const inStairBlock=(x:number,z:number)=>Math.abs(x)<3.22&&z>-2.55&&z<5.42&&!canUseStairFootprint;
+        const blockedByStair=(x:number,z:number)=>{
+          if(!inStairBlock(x,z))return false;
+          if(inStairBlock(px,pz)){
+            // Never trap Rick inside the stair footprint: allow steps that move toward an exit.
+            const distNow=Math.min(3.22-Math.abs(px),5.42-pz,pz+2.55);
+            const distNext=Math.min(3.22-Math.abs(x),5.42-z,z+2.55);
+            return distNext>distNow;
+          }
+          return true;
+        };
+        const blockedByStairRail=(x:number,z:number)=>onStairNow&&!onDeckNow&&z<5.35&&Math.abs(x)>2.85&&Math.abs(x)>=Math.abs(px);
+        const blockedByDeckEdge=(x:number,z:number)=>onDeckNow&&(Math.abs(x)>11.9||(Math.abs(x)>2.82&&z>-1.75&&(Math.abs(x)>=Math.abs(px)||z>=pz)));
         const blockedByFurniture=(x:number,z:number)=>{
           const sofa=((x+10.2)/2.45)**2+((z-1.8)/1.22)**2<1;
           const chairA=Math.hypot(x-8.4,z-4.8)<0.92;
           const chairB=Math.hypot(x+7.8,z+7.1)<0.88;
-          return player.current!.position.y<0.55&&(sofa||chairA||chairB);
+          return py<0.55&&(sofa||chairA||chairB);
         };
-        const canMove=(x:number,z:number)=>!blockedByStair(x,z)&&!blockedByFurniture(x,z);
+        const canMove=(x:number,z:number)=>!blockedByStair(x,z)&&!blockedByStairRail(x,z)&&!blockedByDeckEdge(x,z)&&!blockedByFurniture(x,z);
         if(canMove(nextX,pz))player.current.position.x=nextX;
         const resolvedX=player.current.position.x;
         if(canMove(resolvedX,nextZ))player.current.position.z=nextZ;
         if(onStairNow||entersStairFromFront)upperDeckAccess.current=true;
-        if(player.current.position.y<0.05&&player.current.position.z>5.55)upperDeckAccess.current=false;
-        if(player.current.position.x>12.35||player.current.position.x< -12.35||player.current.position.z< -17.3) {
-          if(player.current.position.y<0.1)upperDeckAccess.current=false;
+        if(py<0.05&&player.current.position.z>5.6&&!onDeckNow)upperDeckAccess.current=false;
+        if((player.current.position.x>12.35||player.current.position.x<-12.35||player.current.position.z<-17.3)&&py<0.1){
+          upperDeckAccess.current=false;
         }
       }
-      // Keep the horizontal combat-facing state for weapon targeting, but orient
-      // the 3D character toward the actual travel direction in the free-roam hall.
+      // Keep the horizontal combat-facing state for weapon targeting, and align
+      // the 3D character + attack ray directly with the movement direction in the free-roam hall.
       if(Math.abs(dx)>0.05)facing.current=dx>0?1:-1;
       if(phase===1){
         attackDirection.current={x:facing.current,z:0};
         player.current.rotation.y=facing.current>0?-Math.PI/2:Math.PI/2;
       }else{
-        // Keep combat targeting aligned with the same dominant axis used by the 3D pose.
-        if(Math.abs(dz)>Math.abs(dx)){
-          attackDirection.current={x:0,z:dz>0?1:-1};
-          player.current.rotation.y=dz>0?Math.PI:0;
-        }else if(Math.abs(dx)>0.05){
-          attackDirection.current={x:dx>0?1:-1,z:0};
-          player.current.rotation.y=dx>0?-Math.PI/2:Math.PI/2;
-        }
+        attackDirection.current={x:v.x,z:v.z};
+        player.current.rotation.y=Math.atan2(-v.x,-v.z);
       }
     }
     if(!grounded.current){motion.current.jumpHeight=Math.max(0,motion.current.jumpHeight+jumpVelocity.current*dt);jumpVelocity.current-=16.5*dt;if(motion.current.jumpHeight<=0){motion.current.jumpHeight=0;jumpVelocity.current=0;grounded.current=true;}}
@@ -875,8 +904,9 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
           target.headless=true;
           target.bodyState="falling";
           target.knocked=0.65;
-          target.fall=attackDirection.current.x||attackDirection.current.z;
+          target.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
           target.vx=attackDirection.current.x*4.5;
+          target.vz=attackDirection.current.z*4.5;
           const headHeight=target.kind==="crawler"?1.05:1.65;
           // Shot blast originates at the aimed monster head and explodes it into gore + skull shards.
           spawnGore(target.x,headHeight,target.z,28,6.2,11);
@@ -1063,6 +1093,10 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
           e.vx=0; e.vy=0; e.vz=0; e.bodyState="wallStuck";
           spawnGore(e.x,e.y,e.targetZ+0.08,18,5.0);
           setEnemyVersion(v=>v+1);
+        }else if(phase===2&&e.vy<0&&e.y<=0.18){
+          e.y=0.18; e.vy=0; e.vx=0; e.vz=0; e.bodyState="fallen";
+          addBloodPool(e.x,e.z,1.0);
+          setEnemyVersion(v=>v+1);
         }
         return;
       }
@@ -1077,7 +1111,9 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
       if(e.bodyState==="falling"){
         e.knocked=Math.max(0,e.knocked-dt);
         e.x+=e.vx*dt;
+        e.z+=e.vz*dt;
         e.vx*=Math.max(0,1-dt*4.5);
+        e.vz*=Math.max(0,1-dt*4.5);
         const progress=1-e.knocked/0.65;
         if(group){
           group.position.set(e.x,Math.max(0.16,Math.sin(progress*Math.PI)*0.22),e.z);
@@ -1085,7 +1121,7 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
         }
         if(e.knocked<=0){
           e.bodyState="fallen";
-          e.vx=0;
+          e.vx=0;e.vz=0;
           addBloodPool(e.x,e.z,1.15);
           setEnemyVersion(v=>v+1);
         }
@@ -1110,15 +1146,26 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
         if(e.knocked<=0)kill(e);
       }else{
         group.rotation.z=THREE.MathUtils.damp(group.rotation.z,0,8,dt);
-        if(Math.abs(e.vx)>0.08){
-          e.x+=e.vx*dt;e.z+=e.vz*dt;e.vx*=Math.max(0,1-dt*2.8);
-        }else if(phase===1||phase===2){
-          if(!e.activated&&Math.hypot(px-e.x,pz-e.z)<(phase===2?18:11.5))e.activated=true;
+        if(Math.abs(e.vx)>0.08||Math.abs(e.vz)>0.08){
+          e.x+=e.vx*dt;e.z+=e.vz*dt;e.vx*=Math.max(0,1-dt*2.8);e.vz*=Math.max(0,1-dt*2.8);
+        }else if(phase===1){
+          if(!e.activated&&Math.hypot(px-e.x,pz-e.z)<11.5)e.activated=true;
           if(e.activated){
-            if(Math.abs(px-e.x)>0.85)e.x+=Math.sign(px-e.x)*(phase===2?1.35:1.2)*dt;
-            if(phase===2)e.z+=Math.sign(pz-e.z)*Math.min(Math.abs(pz-e.z),1.35*dt);
-            else e.z+=Math.sign(pz-e.z)*Math.min(Math.abs(pz-e.z),1.2*dt);
+            if(Math.abs(px-e.x)>0.85)e.x+=Math.sign(px-e.x)*1.2*dt;
+            e.z+=Math.sign(pz-e.z)*Math.min(Math.abs(pz-e.z),1.2*dt);
             group.rotation.y=THREE.MathUtils.damp(group.rotation.y,px>=e.x?0.45:-0.45,6,dt);
+          }
+        }else{
+          const dxPlayer=px-e.x,dzPlayer=pz-e.z;
+          const distPlayer=Math.hypot(dxPlayer,dzPlayer);
+          if(!e.activated&&distPlayer<20)e.activated=true;
+          if(e.activated){
+            if(distPlayer>0.95){
+              const step=Math.min(distPlayer-0.95,1.35*dt);
+              e.x+=(dxPlayer/distPlayer)*step;
+              e.z+=(dzPlayer/distPlayer)*step;
+            }
+            group.rotation.y=THREE.MathUtils.damp(group.rotation.y,Math.atan2(dxPlayer,dzPlayer),6,dt);
           }
         }
         group.position.y=e.kind==="crawler"?Math.abs(Math.sin(e.animation))*0.035:Math.sin(e.animation*2)*0.025;
@@ -1219,7 +1266,18 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
       player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-25.5,63.8);
       if(player.current.position.x>=62.5){
         setPhase(2);onStageChange(2);player.current.position.set(0,0,9);
+        player.current.rotation.y=0;
+        attackDirection.current={x:0,z:-1};
+        upperDeckAccess.current=false;
         pendingShotgun.current=null;
+        pipeCombo.current=null;
+        spitHitCooldown.current=0;
+        jumpVelocity.current=0;
+        grounded.current=true;
+        motion.current.jumpHeight=0;
+        spitProjectiles.current=[];
+        spitSplashes.current=[];
+        effects.current=[];
         enemies.current.forEach(e=>{e.alive=false;e.bodyState="alive";});
         // The hall is an arena: its first wave enters from several sides, not a single corridor.
         const hallWave=[
@@ -1237,12 +1295,12 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
       // Only the front-facing staircase grants access to the upper-storey deck.
       const stairX=Math.abs(player.current.position.x);
       const stairZ=player.current.position.z;
-      const onStair=upperDeckAccess.current&&stairX<=2.95&&stairZ>=-2.45&&stairZ<=5.2;
-      const onUpperGallery=upperDeckAccess.current&&stairZ>=-17.25&&stairZ<=-1.55&&stairX<=12.0;
+      const onStair=upperDeckAccess.current&&stairX<=2.95&&stairZ>=-2.45&&stairZ<=5.55;
+      const onUpperGallery=upperDeckAccess.current&&stairZ>=-17.25&&stairZ<=-1.75&&stairX<=12.0;
       if(onUpperGallery)player.current.position.y=3.5;
-      else if(onStair)player.current.position.y=THREE.MathUtils.clamp((5.2-stairZ)/7.45,0,1)*3.5;
+      else if(onStair)player.current.position.y=THREE.MathUtils.clamp((5.45-stairZ)/7.2,0,1)*3.5;
       else player.current.position.y=0;
-      if(!onUpperGallery&&!onStair&&player.current.position.y<0.05)upperDeckAccess.current=false;
+      if(!onUpperGallery&&!onStair&&(stairZ>5.6||stairX>2.95))upperDeckAccess.current=false;
       const underUpperDeck=player.current.position.y<2.5&&stairX<=12.25&&stairZ>=-17.25&&stairZ<=-2.55;
       player.current.visible=!underUpperDeck;
     }
@@ -1250,18 +1308,34 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
     const targetX=player.current.position.x;
     const targetZ=player.current.position.z;
     const playerHeight=player.current.position.y;
+    const hdPhase2ZoomActive=useHDCharacter&&phase===2;
+    if(hdPhase2ZoomActive){
+      hdZoomCurrent.current=THREE.MathUtils.damp(hdZoomCurrent.current,zoomTargetRef.current,10,dt);
+    }else{
+      hdZoomCurrent.current=1;
+    }
     if(phase===1){
       camera.position.x=THREE.MathUtils.damp(camera.position.x,targetX,3.8,dt);
       camera.position.z=18;
       camera.position.y=4.6;
       camera.lookAt(camera.position.x,3.2,0);
+    }else if(hdPhase2ZoomActive){
+      const zoomLevel=THREE.MathUtils.clamp(hdZoomCurrent.current,0.55,2.4);
+      const focus=THREE.MathUtils.clamp((zoomLevel-1)/1.4,0,1);
+      const camY=THREE.MathUtils.lerp(8.4,5.6,focus)+playerHeight;
+      const camZ=targetZ+THREE.MathUtils.lerp(6.8,5.0,focus);
+      const lookY=THREE.MathUtils.lerp(1.7,1.28,focus)+playerHeight;
+      const lookZ=targetZ-THREE.MathUtils.lerp(2.6,0.35,focus);
+      camera.position.set(targetX,camY,camZ);
+      camera.up.set(0,1,0);
+      camera.lookAt(targetX,lookY,lookZ);
     }else{
       // Rigid follow offset prevents the room from swaying as Rick changes direction.
       camera.position.set(targetX,8.4+playerHeight,targetZ+6.8);
       camera.up.set(0,1,0);
       camera.lookAt(targetX,1.7+playerHeight,targetZ-2.6);
     }
-    if(size.width>0){const aspect=size.width/Math.max(1,size.height);const halfH=phase===1?5.4:7.4;const ortho=camera as THREE.OrthographicCamera;ortho.zoom=1;ortho.left=-halfH*aspect;ortho.right=halfH*aspect;ortho.top=halfH;ortho.bottom=-halfH;ortho.updateProjectionMatrix();}
+    if(size.width>0){const aspect=size.width/Math.max(1,size.height);const baseHalfH=phase===1?5.4:7.4;const halfH=hdPhase2ZoomActive?baseHalfH/THREE.MathUtils.clamp(hdZoomCurrent.current,0.55,2.4):baseHalfH;const ortho=camera as THREE.OrthographicCamera;ortho.zoom=1;ortho.left=-halfH*aspect;ortho.right=halfH*aspect;ortho.top=halfH;ortho.bottom=-halfH;ortho.updateProjectionMatrix();}
   });
 
   return <group>
@@ -1320,6 +1394,19 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter}:Wor
 
 export default function GameView({onScore,onKill,paused,onStageChange,graphicsQuality}:Props) {
   const [rendererMode,setRendererMode]=useState<"webgpu"|"webgl"|null>(null);
+  const [worldPhase,setWorldPhase]=useState<1|2>(1);
+  const viewportRef=useRef<HTMLDivElement>(null);
+  const zoomTargetRef=useRef(1);
+  const [zoomDisplay,setZoomDisplay]=useState(1);
+  const pinchDistRef=useRef<number|null>(null);
+  const isHDPhase2=rendererMode==="webgpu"&&worldPhase===2;
+
+  const setHDZoom=(next:number)=>{
+    const clamped=Math.round(THREE.MathUtils.clamp(next,0.55,2.4)*100)/100;
+    zoomTargetRef.current=clamped;
+    setZoomDisplay(clamped);
+  };
+
   useEffect(()=>{
     let cancelled=false;
     setRendererMode(null);
@@ -1338,6 +1425,27 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
     void resolveRenderer();
     return ()=>{cancelled=true;};
   },[graphicsQuality]);
+
+  useEffect(()=>{
+    if(!isHDPhase2)return;
+    const onKeyDown=(e:KeyboardEvent)=>{
+      if(e.key==="+"||e.key==="="){setHDZoom(zoomTargetRef.current+0.15);}
+      else if(e.key==="-"||e.key==="_"){setHDZoom(zoomTargetRef.current-0.15);}
+      else if(e.key==="0"){setHDZoom(1);}
+    };
+    const el=viewportRef.current;
+    const onWheel=(e:WheelEvent)=>{
+      e.preventDefault();
+      setHDZoom(zoomTargetRef.current+(e.deltaY<0?0.14:-0.14));
+    };
+    window.addEventListener("keydown",onKeyDown);
+    el?.addEventListener("wheel",onWheel,{passive:false});
+    return ()=>{
+      window.removeEventListener("keydown",onKeyDown);
+      el?.removeEventListener("wheel",onWheel);
+    };
+  },[isHDPhase2]);
+
   const joystickRef=useRef<HTMLDivElement>(null);
   const joystickInput=useRef({x:0,y:0,pointerId:-1});
   const [knob,setKnob]=useState({x:0,y:0});
@@ -1347,28 +1455,57 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
   const setAction=(key:"attack"|"grab"|"jump"|"pickup",value:boolean)=>{controls.current[key]=value;};
   const press=(key:"attack"|"grab"|"jump"|"pickup")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,true);};
   const release=(key:"attack"|"grab"|"jump"|"pickup")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,false);};
-  return <div className="game-viewport">
+  const handleStageChange=(stage:1|2)=>{
+    setWorldPhase(stage);
+    if(stage===2)setHDZoom(1);
+    onStageChange(stage);
+  };
+  return <div ref={viewportRef} className="game-viewport"
+    onTouchStart={e=>{
+      if(!isHDPhase2||e.touches.length!==2)return;
+      const a=e.touches[0],b=e.touches[1];
+      pinchDistRef.current=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+    }}
+    onTouchMove={e=>{
+      if(!isHDPhase2||e.touches.length!==2||pinchDistRef.current===null)return;
+      const a=e.touches[0],b=e.touches[1];
+      const nextDist=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+      const delta=nextDist-pinchDistRef.current;
+      pinchDistRef.current=nextDist;
+      setHDZoom(zoomTargetRef.current+delta*0.0045);
+    }}
+    onTouchEnd={e=>{if(e.touches.length<2)pinchDistRef.current=null;}}>
     {rendererMode===null ? <div className="renderer-loading" role="status">Preparando qualidade gráfica…</div> : (
       <Canvas key={rendererMode} className="game-canvas" shadows dpr={[1,1.7]} orthographic camera={{position:[-24,4.6,18],zoom:1,near:0.1,far:100}}
-        gl={(canvas)=>{
+        gl={async (defaultProps)=>{
+          const canvas=defaultProps.canvas as HTMLCanvasElement;
           if(rendererMode==="webgpu"){
             const renderer=new WebGPURenderer({canvas,antialias:true,powerPreference:"high-performance"});
-            return renderer.init().then(()=>{renderer.shadowMap.enabled=true;return renderer;}).catch(()=>{
+            try{
+              await renderer.init();
+              renderer.shadowMap.enabled=true;
+              return renderer as unknown as THREE.WebGLRenderer;
+            }catch{
               setRendererMode("webgl");
               const fallback=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:"high-performance"});
               fallback.shadowMap.enabled=true;
               fallback.shadowMap.type=THREE.PCFSoftShadowMap;
               return fallback;
-            });
+            }
           }
           const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:"high-performance"});
           renderer.shadowMap.enabled=true;
           renderer.shadowMap.type=THREE.PCFSoftShadowMap;
           return renderer;
         }}>
-        <World onScore={onScore} onKill={onKill} paused={paused} onStageChange={onStageChange} controls={controls} useHDCharacter={rendererMode==="webgpu"}/>
+        <World onScore={onScore} onKill={onKill} paused={paused} onStageChange={handleStageChange} controls={controls} useHDCharacter={rendererMode==="webgpu"} zoomTargetRef={zoomTargetRef}/>
       </Canvas>
     )}
+    {isHDPhase2&&<div className="hd-zoom-controls" aria-label="Zoom da câmera HD">
+      <button type="button" className="hd-zoom-btn" aria-label="Afastar câmera" disabled={zoomDisplay<=0.56} onClick={()=>setHDZoom(zoomTargetRef.current-0.2)}>−</button>
+      <button type="button" className="hd-zoom-readout" aria-label="Redefinir zoom" onClick={()=>setHDZoom(1)}>{Math.round(zoomDisplay*100)}%</button>
+      <button type="button" className="hd-zoom-btn" aria-label="Aproximar câmera" disabled={zoomDisplay>=2.39} onClick={()=>setHDZoom(zoomTargetRef.current+0.2)}>+</button>
+    </div>}
     <div className="action-buttons" aria-label="Ações de Rick">
       <button type="button" className="action-button action-punch" aria-label="Soco ou ataque" onPointerDown={press("attack")} onPointerUp={release("attack")} onPointerCancel={release("attack")} onPointerLeave={release("attack")}>SOCO</button>
       <button type="button" className="action-button action-grab" aria-label="Agarrar e arremessar" onPointerDown={press("grab")} onPointerUp={release("grab")} onPointerCancel={release("grab")} onPointerLeave={release("grab")}>AGARRÃO</button>
