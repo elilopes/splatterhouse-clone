@@ -254,7 +254,7 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
         enemy.health=0;
         enemy.head.parent=null;enemy.head.position.copyFrom(enemy.root.position.add(new Vector3(0,1.7,0)));
         enemy.head.position.x+=facing*0.2;enemy.head.position.y+=0.3;
-        enemy.head.rotation.z=facing*0.7;enemy.head.scaling.set(0.82,0.82,0.82);
+        enemy.head.rotation.z=facing*0.7;enemy.head.scaling.set(0.82,0.82,0.82);\n        enemy.head.metadata={velocity:new Vector3(facing*8,3.2,0),headProjectile:true};
         enemy.body.scaling.y=0.72;enemy.root.scaling.y=0.72;
         addImpact(scene,enemy.root.position,blood);
       } else if(kind==="shotgun"){
@@ -358,7 +358,7 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
         // Small detached shotgun fragments fall under a simple visual gravity.
         scene.meshes.forEach(mesh=>{
           const velocity=mesh.metadata?.velocity as Vector3|undefined;
-          if(velocity){mesh.position.addInPlace(velocity.scale(dt));velocity.y-=9.8*dt;if(mesh.position.y<0.05){mesh.position.y=0.05;mesh.metadata={};}}
+          if(velocity){mesh.position.addInPlace(velocity.scale(dt));velocity.y-=9.8*dt;if(mesh.position.y<0.05){mesh.position.y=0.05;velocity.y=0;}\n          if(mesh.metadata?.headProjectile&&(mesh.position.x<=-15.8||mesh.position.x>=10.0)){mesh.scaling.set(0.9,0.12,0.45);mesh.metadata={};}}
         });
         if(phase===1){
           player.position.x=Math.max(-16.2,Math.min(11.4,player.position.x));
