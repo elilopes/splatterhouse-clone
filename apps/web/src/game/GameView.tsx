@@ -222,6 +222,7 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
   const joystickRef = useRef<HTMLDivElement>(null);
   const joystickInput = useRef({ x: 0, y: 0, pointerId: -1 });
   const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
+  const actionRefs = useRef<{ punch: () => void; grab: () => void; jump: () => void }>({ punch: () => {}, grab: () => {}, jump: () => {} });
   const updateJoystick = (event: ReactPointerEvent<HTMLDivElement>) => {
     const base = joystickRef.current;
     if (!base) return;
@@ -263,6 +264,8 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
     let equipped: WeaponId | null=null;
     let attackCooldown=0;
     let grabCooldown=0;
+    let jumpVelocity=0;
+    let grounded=true;
     let shotgunAmmo=6;
     let interiorBuilt=false;
     const camera=new FreeCamera("side-camera",new Vector3(-14,3.3,-16),scene);
@@ -382,11 +385,14 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
       target.root.position.x+=facing*0.35;
       damageEnemy(target,"throw");
     };
+    const jump=()=>{if(!grounded||pausedRef.current)return;grounded=false;jumpVelocity=6.2;};
+    actionRefs.current={punch:attack,grab:grabAndThrow,jump};
     const keyDown=(e:KeyboardEvent)=>{
       const key=e.key.toLowerCase();keys.add(key);
       if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(key))e.preventDefault();
       if(key==="j")attack();
       if(key==="k")grabAndThrow();
+      if(key===" "||key==="l")jump();
       if(key==="e")pickupWeapon();
     };
     const keyUp=(e:KeyboardEvent)=>keys.delete(e.key.toLowerCase());
@@ -407,6 +413,7 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
           if(horizontal!==0)facing=horizontal>0?1:-1;
           player.rotation.y=facing>0?-Math.PI/2:Math.PI/2;
         }
+        if(!grounded){player.position.y+=jumpVelocity*dt;jumpVelocity-=16.5*dt;if(player.position.y<=0){player.position.y=0;jumpVelocity=0;grounded=true;}}
         rick.update(dt,move.lengthSquared()>0);
         pickups.forEach(p=>{if(!p.collected){p.root.rotation.y+=dt*0.65;p.root.position.y=0.15+Math.sin(now*0.002+p.root.position.x)*0.06;}});
         for(const enemy of enemies){
@@ -476,6 +483,7 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
     const resize=()=>{engine.resize();updateCameraBounds();};window.addEventListener("resize",resize);
     return ()=>{
       window.removeEventListener("keydown",keyDown);window.removeEventListener("keyup",keyUp);window.removeEventListener("resize",resize);
+      actionRefs.current={punch:()=>{},grab:()=>{},jump:()=>{}};
       rick.dispose();scene.dispose();engine.dispose();
     };
   },[]);
@@ -483,6 +491,11 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
   return (
     <div className="game-viewport">
       <canvas ref={canvasRef} className="game-canvas" aria-label="Splatterhouse: combate com armas na fase externa e interior 2,5D" />
+      <div className="action-buttons" aria-label="Ações de Rick">
+        <button type="button" className="action-button action-punch" aria-label="Soco ou ataque" onPointerDown={event => { event.preventDefault(); actionRefs.current.punch(); }}>SOCO</button>
+        <button type="button" className="action-button action-grab" aria-label="Agarrar e arremessar" onPointerDown={event => { event.preventDefault(); actionRefs.current.grab(); }}>AGARRÃO</button>
+        <button type="button" className="action-button action-jump" aria-label="Pular" onPointerDown={event => { event.preventDefault(); actionRefs.current.jump(); }}>PULO</button>
+      </div>
       <div
         ref={joystickRef}
         className="virtual-joystick"
