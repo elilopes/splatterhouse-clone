@@ -2,28 +2,88 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
+export type RickWeaponId = "pipe" | "machete" | "shotgun";
+
 export type RickMotion = {
   moving: boolean;
   attackTime: number;
   grabTime: number;
   jumpHeight: number;
+  weapon: RickWeaponId | null;
 };
 
-type Props = { motion: RickMotion };
+type Props = { motion: RickMotion; equippedWeapon?: RickWeaponId | null };
 
 function ellipsoid(geometry: THREE.SphereGeometry, material: THREE.Material, position: [number,number,number], scale: [number,number,number]) {
   return <mesh geometry={geometry} material={material} position={position} scale={scale} castShadow receiveShadow />;
 }
 
-/** Rick's procedural replacement model. Smooth overlapping anatomy, no per-part comic outlines. */
-export default function RickTaylorCharacter({ motion }: Props) {
+function HeldWeaponMesh({ id, muzzleRef }: { id: RickWeaponId; muzzleRef: React.RefObject<THREE.Group | null> }) {
+  if (id === "pipe") {
+    return (
+      <group position={[0, 0, -0.35]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.055, 0.055, 1.35, 12]} />
+          <meshStandardMaterial color="#8d9290" metalness={0.82} roughness={0.26} />
+        </mesh>
+        <mesh position={[0, 0, 0.38]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.068, 0.068, 0.34, 10]} />
+          <meshStandardMaterial color="#42261a" roughness={0.85} />
+        </mesh>
+      </group>
+    );
+  }
+  if (id === "machete") {
+    return (
+      <group position={[0, 0, -0.28]}>
+        <mesh position={[0, 0.02, -0.26]} castShadow>
+          <boxGeometry args={[0.045, 0.12, 0.92]} />
+          <meshStandardMaterial color="#caccc4" metalness={0.85} roughness={0.18} />
+        </mesh>
+        <mesh position={[0, 0, 0.28]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.055, 0.055, 0.34, 10]} />
+          <meshStandardMaterial color="#513020" roughness={0.85} />
+        </mesh>
+      </group>
+    );
+  }
+  return (
+    <group position={[0, -0.28, -0.02]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh position={[0, 0, -0.18]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.045, 0.045, 1.05, 12]} />
+        <meshStandardMaterial color="#777c7a" metalness={0.82} roughness={0.25} />
+      </mesh>
+      <mesh position={[0, -0.05, 0.42]}>
+        <boxGeometry args={[0.12, 0.16, 0.45]} />
+        <meshStandardMaterial color="#382219" roughness={0.85} />
+      </mesh>
+      <group ref={muzzleRef} position={[0, 0, -0.82]} visible={false}>
+        <mesh>
+          <sphereGeometry args={[0.28, 12, 10]} />
+          <meshBasicMaterial color="#ffd266" />
+        </mesh>
+        <mesh position={[0, 0, -0.22]} rotation={[-Math.PI / 2, 0, 0]}>
+          <coneGeometry args={[0.28, 0.65, 10]} />
+          <meshBasicMaterial color="#ff5a1f" />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+/** Rick's procedural replacement model with articulated elbows, torso twist, and hand-mounted weapons. */
+export default function RickTaylorCharacter({ motion, equippedWeapon = null }: Props) {
   const root = useRef<THREE.Group>(null);
   const torso = useRef<THREE.Group>(null);
   const head = useRef<THREE.Group>(null);
   const leftArm = useRef<THREE.Group>(null);
+  const leftForearm = useRef<THREE.Group>(null);
   const rightArm = useRef<THREE.Group>(null);
+  const rightForearm = useRef<THREE.Group>(null);
   const leftLeg = useRef<THREE.Group>(null);
   const rightLeg = useRef<THREE.Group>(null);
+  const muzzleRef = useRef<THREE.Group>(null);
+
   const materials = useMemo(() => {
     const skin = new THREE.MeshStandardMaterial({ color: "#b77b63", roughness: 0.72 });
     const skinLight = new THREE.MeshStandardMaterial({ color: "#d49a7c", roughness: 0.68 });
@@ -35,31 +95,155 @@ export default function RickTaylorCharacter({ motion }: Props) {
     const boot = new THREE.MeshStandardMaterial({ color: "#171518", roughness: 0.82 });
     return { skin, skinLight, denim, denimLight, mask, maskShade, blood, boot };
   }, []);
+
   const sphere = useMemo(() => new THREE.SphereGeometry(1, 32, 24), []);
   const capsule = useMemo(() => new THREE.CapsuleGeometry(0.12, 0.42, 8, 20), []);
+
   useFrame((_, dt) => {
     if (!root.current) return;
     const t = performance.now() * 0.001;
     const gait = motion.moving ? Math.sin(t * 10) : 0;
+    const activeWeapon = equippedWeapon ?? motion.weapon;
+    const attackDur = activeWeapon === "shotgun" ? 0.34 : activeWeapon === "pipe" ? 0.68 : activeWeapon === "machete" ? 0.44 : 0.36;
+    const p = motion.attackTime > 0 ? THREE.MathUtils.clamp(1 - motion.attackTime / attackDur, 0, 1) : 0;
+    const grab = motion.grabTime > 0 ? Math.sin((1 - motion.grabTime / 0.46) * Math.PI) : 0;
+
+    let torsoRotY = motion.moving ? gait * 0.06 : 0;
+    let torsoRotX = motion.moving ? 0.05 : 0;
+    let torsoRotZ = motion.moving ? gait * 0.025 : 0;
+
+    let rShoulderX = gait * 0.35 + 0.12;
+    let rShoulderZ = -0.08;
+    let rElbowX = 0.52;
+    let lShoulderX = -gait * 0.35 + 0.32;
+    let lShoulderZ = 0.1;
+    let lElbowX = 0.72;
+
+    if (activeWeapon === "shotgun") {
+      rShoulderX = -0.22 + gait * 0.1;
+      rElbowX = 1.65;
+      rShoulderZ = -0.04;
+      lShoulderX = 0.35 - gait * 0.1;
+      lElbowX = 1.25;
+      lShoulderZ = 0.24;
+      torsoRotY = 0.22;
+      if (motion.attackTime > 0) {
+        const kick = Math.sin(p * Math.PI);
+        rShoulderX -= kick * 0.42;
+        rElbowX -= kick * 0.18;
+        torsoRotX -= kick * 0.16;
+      }
+    } else if (activeWeapon === "pipe" || activeWeapon === "machete") {
+      rShoulderX = 0.15 + gait * 0.22;
+      rElbowX = 0.48;
+      if (motion.attackTime > 0) {
+        if (p < 0.34) {
+          const w = p / 0.34;
+          const ease = w * w * (3 - 2 * w);
+          torsoRotY = THREE.MathUtils.lerp(0, -0.42, ease);
+          torsoRotX = THREE.MathUtils.lerp(0, -0.12, ease);
+          rShoulderX = THREE.MathUtils.lerp(0.15, 2.15, ease);
+          rShoulderZ = THREE.MathUtils.lerp(-0.08, -0.35, ease);
+          rElbowX = THREE.MathUtils.lerp(0.48, 0.72, ease);
+          lShoulderX = 0.55;
+          lElbowX = 0.95;
+        } else if (p < 0.62) {
+          const s = (p - 0.34) / 0.28;
+          const snap = 1 - Math.pow(1 - s, 2.2);
+          torsoRotY = THREE.MathUtils.lerp(-0.42, 0.5, snap);
+          torsoRotX = THREE.MathUtils.lerp(-0.12, 0.24, snap);
+          rShoulderX = THREE.MathUtils.lerp(2.15, -0.2, snap);
+          rShoulderZ = THREE.MathUtils.lerp(-0.35, 0.28, snap);
+          rElbowX = THREE.MathUtils.lerp(0.72, 0.16, snap);
+          lShoulderX = -0.2;
+          lElbowX = 0.85;
+        } else {
+          const r = (p - 0.62) / 0.38;
+          torsoRotY = THREE.MathUtils.lerp(0.5, 0, r);
+          torsoRotX = THREE.MathUtils.lerp(0.24, 0.04, r);
+          rShoulderX = THREE.MathUtils.lerp(-0.2, 0.15, r);
+          rShoulderZ = THREE.MathUtils.lerp(0.28, -0.08, r);
+          rElbowX = THREE.MathUtils.lerp(0.16, 0.48, r);
+        }
+      }
+    } else if (motion.attackTime > 0) {
+      // Unarmed heavy punch: wind-up -> torso snap + elbow extension -> recovery
+      if (p < 0.22) {
+        const w = p / 0.22;
+        torsoRotY = THREE.MathUtils.lerp(0, -0.36, w);
+        torsoRotX = THREE.MathUtils.lerp(0, 0.06, w);
+        rShoulderX = THREE.MathUtils.lerp(0.12, -0.58, w);
+        rShoulderZ = THREE.MathUtils.lerp(-0.08, -0.18, w);
+        rElbowX = THREE.MathUtils.lerp(0.52, 1.72, w);
+        lShoulderX = THREE.MathUtils.lerp(0.32, 0.82, w);
+        lElbowX = 1.05;
+      } else if (p < 0.5) {
+        const s = (p - 0.22) / 0.28;
+        const snap = 1 - Math.pow(1 - s, 3);
+        torsoRotY = THREE.MathUtils.lerp(-0.36, 0.48, snap);
+        torsoRotX = THREE.MathUtils.lerp(0.06, 0.2, snap);
+        rShoulderX = THREE.MathUtils.lerp(-0.58, 1.56, snap);
+        rShoulderZ = THREE.MathUtils.lerp(-0.18, 0.16, snap);
+        rElbowX = THREE.MathUtils.lerp(1.72, 0.06, snap);
+        lShoulderX = THREE.MathUtils.lerp(0.82, -0.25, snap);
+        lElbowX = 0.95;
+      } else {
+        const r = (p - 0.5) / 0.5;
+        torsoRotY = THREE.MathUtils.lerp(0.48, 0, r);
+        torsoRotX = THREE.MathUtils.lerp(0.2, 0.04, r);
+        rShoulderX = THREE.MathUtils.lerp(1.56, 0.12, r);
+        rShoulderZ = THREE.MathUtils.lerp(0.16, -0.08, r);
+        rElbowX = THREE.MathUtils.lerp(0.06, 0.52, r);
+        lShoulderX = THREE.MathUtils.lerp(-0.25, 0.32, r);
+        lElbowX = 0.72;
+      }
+    }
+
+    if (grab > 0) {
+      torsoRotX = grab * 0.18;
+      torsoRotY = 0;
+      lShoulderX = grab * 1.25;
+      rShoulderX = grab * 1.25;
+      lShoulderZ = -grab * 0.16;
+      rShoulderZ = grab * 0.16;
+      lElbowX = 0.38;
+      rElbowX = 0.38;
+    }
+
     if (torso.current) {
       torso.current.position.y = 1.05 + (motion.moving ? Math.abs(gait) * 0.035 : Math.sin(t * 2.2) * 0.012);
-      torso.current.rotation.z = THREE.MathUtils.damp(torso.current.rotation.z, motion.moving ? gait * 0.025 : 0, 8, dt);
+      torso.current.rotation.y = THREE.MathUtils.damp(torso.current.rotation.y, torsoRotY, 18, dt);
+      torso.current.rotation.x = THREE.MathUtils.damp(torso.current.rotation.x, torsoRotX, 18, dt);
+      torso.current.rotation.z = THREE.MathUtils.damp(torso.current.rotation.z, torsoRotZ, 10, dt);
     }
+
     if (leftLeg.current) leftLeg.current.rotation.x = THREE.MathUtils.damp(leftLeg.current.rotation.x, gait * 0.55, 10, dt);
     if (rightLeg.current) rightLeg.current.rotation.x = THREE.MathUtils.damp(rightLeg.current.rotation.x, -gait * 0.55, 10, dt);
-    const punch = motion.attackTime > 0 ? Math.sin((1 - motion.attackTime / 0.34) * Math.PI) : 0;
-    const grab = motion.grabTime > 0 ? Math.sin((1 - motion.grabTime / 0.46) * Math.PI) : 0;
+
     if (leftArm.current) {
-      leftArm.current.rotation.x = THREE.MathUtils.damp(leftArm.current.rotation.x, -gait * 0.32 - grab * 1.05, 12, dt);
-      leftArm.current.rotation.z = THREE.MathUtils.damp(leftArm.current.rotation.z, 0.08 + grab * 0.16, 12, dt);
+      leftArm.current.rotation.x = THREE.MathUtils.damp(leftArm.current.rotation.x, lShoulderX, 22, dt);
+      leftArm.current.rotation.z = THREE.MathUtils.damp(leftArm.current.rotation.z, lShoulderZ, 18, dt);
+    }
+    if (leftForearm.current) {
+      leftForearm.current.rotation.x = THREE.MathUtils.damp(leftForearm.current.rotation.x, lElbowX, 22, dt);
     }
     if (rightArm.current) {
-      rightArm.current.rotation.x = THREE.MathUtils.damp(rightArm.current.rotation.x, gait * 0.32 - punch * 1.65 - grab * 1.05, 14, dt);
-      rightArm.current.rotation.z = THREE.MathUtils.damp(rightArm.current.rotation.z, -0.08 - grab * 0.16, 12, dt);
+      rightArm.current.rotation.x = THREE.MathUtils.damp(rightArm.current.rotation.x, rShoulderX, 24, dt);
+      rightArm.current.rotation.z = THREE.MathUtils.damp(rightArm.current.rotation.z, rShoulderZ, 20, dt);
     }
-    if (head.current) head.current.rotation.x = THREE.MathUtils.damp(head.current.rotation.x, grab * 0.08, 8, dt);
+    if (rightForearm.current) {
+      rightForearm.current.rotation.x = THREE.MathUtils.damp(rightForearm.current.rotation.x, rElbowX, 24, dt);
+    }
+    if (head.current) {
+      head.current.rotation.y = THREE.MathUtils.damp(head.current.rotation.y, -torsoRotY * 0.65, 14, dt);
+      head.current.rotation.x = THREE.MathUtils.damp(head.current.rotation.x, grab * 0.08, 8, dt);
+    }
+    if (muzzleRef.current) {
+      muzzleRef.current.visible = activeWeapon === "shotgun" && motion.attackTime > 0.22;
+    }
     root.current.position.y = motion.jumpHeight;
   });
+
   return (
     <group ref={root} scale={1.04} dispose={null}>
       {/* Pelvis and trousers form a continuous silhouette */}
@@ -79,31 +263,38 @@ export default function RickTaylorCharacter({ motion }: Props) {
       {/* Broad, tapered torso; large overlapping volumes blend visually with smooth shading */}
       <group ref={torso} position={[0,1.05,0]}>
         {ellipsoid(sphere, materials.skin, [0,0.34,0], [0.43,0.58,0.27])}
-        {ellipsoid(sphere, materials.skinLight, [0,0.57,0.025], [0.55,0.34,0.30])}
-        {ellipsoid(sphere, materials.skin, [0,0.12,0.015], [0.34,0.32,0.235])}
-        {ellipsoid(sphere, materials.skinLight, [-0.17,0.56,0.19], [0.27,0.19,0.13])}
-        {ellipsoid(sphere, materials.skinLight, [0.17,0.56,0.19], [0.27,0.19,0.13])}
+        {ellipsoid(sphere, materials.skinLight, [0,0.57,-0.025], [0.55,0.34,0.30])}
+        {ellipsoid(sphere, materials.skin, [0,0.12,-0.015], [0.34,0.32,0.235])}
+        {ellipsoid(sphere, materials.skinLight, [-0.17,0.56,-0.19], [0.27,0.19,0.13])}
+        {ellipsoid(sphere, materials.skinLight, [0.17,0.56,-0.19], [0.27,0.19,0.13])}
         {ellipsoid(sphere, materials.skin, [0,0.79,0], [0.22,0.22,0.2])}
         {/* Subtle abdominal anatomy integrated into the torso surface */}
         {[-0.12,0.02,0.16].map((y,i) => <group key={i}>
-          {ellipsoid(sphere, materials.skinLight, [-0.085,y,0.205], [0.075,0.065,0.035])}
-          {ellipsoid(sphere, materials.skinLight, [0.085,y,0.205], [0.075,0.065,0.035])}
+          {ellipsoid(sphere, materials.skinLight, [-0.085,y,-0.205], [0.075,0.065,0.035])}
+          {ellipsoid(sphere, materials.skinLight, [0.085,y,-0.205], [0.075,0.065,0.035])}
         </group>)}
         <group ref={leftArm} position={[-0.47,0.61,0]}>
           {ellipsoid(sphere, materials.skinLight, [0,0,0], [0.22,0.24,0.22])}
           <mesh geometry={capsule} material={materials.skin} position={[-0.035,-0.29,0]} rotation={[0,0,0.08]} castShadow receiveShadow />
           {ellipsoid(sphere, materials.skinLight, [-0.06,-0.52,0], [0.15,0.16,0.15])}
-          <mesh geometry={capsule} material={materials.skin} position={[-0.08,-0.76,-0.015]} rotation={[0,0,0.04]} castShadow receiveShadow />
-          {ellipsoid(sphere, materials.skinLight, [-0.09,-0.99,-0.025], [0.15,0.14,0.15])}
           {ellipsoid(sphere, materials.blood, [-0.12,0.06,-0.17], [0.11,0.045,0.025])}
+          <group ref={leftForearm} position={[-0.06,-0.52,0]}>
+            <mesh geometry={capsule} material={materials.skin} position={[-0.02,-0.24,-0.015]} rotation={[0,0,0.04]} castShadow receiveShadow />
+            {ellipsoid(sphere, materials.skinLight, [-0.03,-0.47,-0.025], [0.15,0.14,0.15])}
+          </group>
         </group>
         <group ref={rightArm} position={[0.47,0.61,0]}>
           {ellipsoid(sphere, materials.skinLight, [0,0,0], [0.22,0.24,0.22])}
           <mesh geometry={capsule} material={materials.skin} position={[0.035,-0.29,0]} rotation={[0,0,-0.08]} castShadow receiveShadow />
           {ellipsoid(sphere, materials.skinLight, [0.06,-0.52,0], [0.15,0.16,0.15])}
-          <mesh geometry={capsule} material={materials.skin} position={[0.08,-0.76,-0.015]} rotation={[0,0,-0.04]} castShadow receiveShadow />
-          {ellipsoid(sphere, materials.skinLight, [0.09,-0.99,-0.025], [0.15,0.14,0.15])}
           {ellipsoid(sphere, materials.blood, [0.11,0.08,-0.17], [0.08,0.035,0.02])}
+          <group ref={rightForearm} position={[0.06,-0.52,0]}>
+            <mesh geometry={capsule} material={materials.skin} position={[0.02,-0.24,-0.015]} rotation={[0,0,-0.04]} castShadow receiveShadow />
+            {ellipsoid(sphere, materials.skinLight, [0.03,-0.47,-0.025], [0.15,0.14,0.15])}
+            <group position={[0.03,-0.47,-0.025]}>
+              {equippedWeapon && <HeldWeaponMesh id={equippedWeapon} muzzleRef={muzzleRef} />}
+            </group>
+          </group>
         </group>
         <group ref={head} position={[0,1.04,0.015]}>
           {ellipsoid(sphere, materials.skin, [0,0.02,0], [0.32,0.38,0.27])}
@@ -114,7 +305,7 @@ export default function RickTaylorCharacter({ motion }: Props) {
           {ellipsoid(sphere, materials.maskShade, [0.125,0.075,-0.304], [0.105,0.065,0.035])}
           {ellipsoid(sphere, materials.maskShade, [0, -0.055,-0.325], [0.065,0.09,0.045])}
           {ellipsoid(sphere, materials.maskShade, [0,-0.205,-0.29], [0.17,0.055,0.04])}
-          {[-2,-1,0,1,2].map(i => ellipsoid(sphere, materials.mask, [i*0.055,-0.205,-0.328], [0.018,0.035,0.012]))}
+          {[-2,-1,0,1,2].map(i => <mesh key={i} geometry={sphere} material={materials.mask} position={[i*0.055,-0.205,-0.328]} scale={[0.018,0.035,0.012]} castShadow receiveShadow />)}
           {ellipsoid(sphere, materials.maskShade, [0,0.29,-0.04], [0.31,0.055,0.21])}
         </group>
       </group>
