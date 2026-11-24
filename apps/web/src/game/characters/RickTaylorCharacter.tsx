@@ -131,7 +131,8 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     const activeWeapon = equippedWeapon ?? motion.weapon;
     const attackDur = activeWeapon === "shotgun" ? 0.34 : activeWeapon === "pipe" ? 0.68 : activeWeapon === "machete" ? 0.44 : 0.36;
     const p = motion.attackTime > 0 ? THREE.MathUtils.clamp(1 - motion.attackTime / attackDur, 0, 1) : 0;
-    const grab = motion.grabTime > 0 ? Math.sin((1 - motion.grabTime / 0.46) * Math.PI) : 0;
+    const grabProgress = motion.grabTime > 0 ? THREE.MathUtils.clamp(1 - motion.grabTime / 1.35, 0, 1) : 0;
+    const grab = grabProgress > 0 ? Math.sin(grabProgress * Math.PI) : 0;
 
     let torsoRotY = motion.moving ? gait * 0.06 : 0;
     let torsoRotX = motion.moving ? 0.05 : 0;
@@ -224,15 +225,39 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
       }
     }
 
-    if (grab > 0) {
-      torsoRotX = grab * 0.18;
-      torsoRotY = 0;
-      lShoulderX = grab * 1.25;
-      rShoulderX = grab * 1.25;
-      lShoulderZ = -grab * 0.16;
-      rShoulderZ = grab * 0.16;
-      lElbowX = 0.38;
-      rElbowX = 0.38;
+    if (motion.grabTime > 0) {
+      // Three distinct two-handed phases: reach/grip, lift overhead, then forceful backward throw.
+      if (grabProgress < 0.24) {
+        const reach = grabProgress / 0.24;
+        torsoRotX = THREE.MathUtils.lerp(0.02, -0.24, reach);
+        lShoulderX = THREE.MathUtils.lerp(0.32, 0.92, reach);
+        rShoulderX = THREE.MathUtils.lerp(0.12, 0.92, reach);
+        lShoulderZ = THREE.MathUtils.lerp(0.1, 0.2, reach);
+        rShoulderZ = THREE.MathUtils.lerp(-0.08, -0.2, reach);
+        lElbowX = THREE.MathUtils.lerp(0.72, 1.22, reach);
+        rElbowX = THREE.MathUtils.lerp(0.52, 1.22, reach);
+      } else if (grabProgress < 0.68) {
+        const lift = (grabProgress - 0.24) / 0.44;
+        const ease = lift * lift * (3 - 2 * lift);
+        torsoRotX = THREE.MathUtils.lerp(-0.24, 0.2, ease);
+        lShoulderX = THREE.MathUtils.lerp(0.92, 2.35, ease);
+        rShoulderX = THREE.MathUtils.lerp(0.92, 2.35, ease);
+        lShoulderZ = THREE.MathUtils.lerp(0.2, 0.28, ease);
+        rShoulderZ = THREE.MathUtils.lerp(-0.2, -0.28, ease);
+        lElbowX = THREE.MathUtils.lerp(1.22, 0.58, ease);
+        rElbowX = THREE.MathUtils.lerp(1.22, 0.58, ease);
+      } else {
+        const throwProgress = (grabProgress - 0.68) / 0.32;
+        const snap = Math.sin(throwProgress * Math.PI * 0.5);
+        torsoRotX = THREE.MathUtils.lerp(0.2, -0.16, snap);
+        torsoRotY = THREE.MathUtils.lerp(0, -0.3, snap);
+        lShoulderX = THREE.MathUtils.lerp(2.35, 0.62, snap);
+        rShoulderX = THREE.MathUtils.lerp(2.35, 0.62, snap);
+        lShoulderZ = THREE.MathUtils.lerp(0.28, 0.42, snap);
+        rShoulderZ = THREE.MathUtils.lerp(-0.28, -0.42, snap);
+        lElbowX = THREE.MathUtils.lerp(0.58, 1.05, snap);
+        rElbowX = THREE.MathUtils.lerp(0.58, 1.05, snap);
+      }
     }
 
     if (torso.current) {
