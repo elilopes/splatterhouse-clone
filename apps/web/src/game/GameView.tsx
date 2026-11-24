@@ -547,6 +547,8 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
           // Blood burst is synchronized with the body hitting the floor.
           spawnGore(e.x,0.62,e.z,24,5.2);
           addBloodPool(e.x,e.z,1.18);
+          onKill();
+          onScore(100);
           setEnemyVersion(v=>v+1);
         }
         return;
