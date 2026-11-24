@@ -196,30 +196,52 @@ function Exterior() {
   </group>;
 }
 
-function MansionRoom() {
+function MansionRoom({player}:{player:React.RefObject<THREE.Group|null>}) {
   const wood="#302019", darkWood="#17100e", stone="#51433a", brass="#80613b";
+  const frontWallGroup=useRef<THREE.Group>(null);
+  const wallOpacity=useRef(1);
+  useFrame(()=>{
+    const playerZ=player.current?.position.z??0;
+    const fade=THREE.MathUtils.smoothstep(playerZ,17,20.2);
+    const nextOpacity=THREE.MathUtils.lerp(1,0.16,fade);
+    if(Math.abs(nextOpacity-wallOpacity.current)<0.008)return;
+    wallOpacity.current=nextOpacity;
+    frontWallGroup.current?.traverse(child=>{
+      if(!(child as THREE.Mesh).isMesh)return;
+      const mesh=child as THREE.Mesh;
+      const materials=Array.isArray(mesh.material)?mesh.material:[mesh.material];
+      materials.forEach(material=>{
+        material.transparent=nextOpacity<0.999;
+        material.opacity=nextOpacity;
+        material.depthWrite=nextOpacity>0.55;
+        material.needsUpdate=true;
+      });
+    });
+  });
   return <group>
     {/* Broad stone-and-wood floor: the playable room extends well beyond the camera view. */}
-    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.08,1]} receiveShadow>
-      <planeGeometry args={[34,38]}/><meshStandardMaterial color="#302720" roughness={0.94}/>
+    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.08,4.5]} receiveShadow>
+      <planeGeometry args={[34,45]}/><meshStandardMaterial color="#302720" roughness={0.94}/>
     </mesh>
-    {Array.from({length:13},(_,i)=><mesh key={"floor-seam-"+i} rotation={[-Math.PI/2,0,0]} position={[-15.5+i*2.58,0,-0.1]}>
-      <planeGeometry args={[0.035,37]}/><meshStandardMaterial color="#17120f" roughness={1}/>
+    {Array.from({length:13},(_,i)=><mesh key={"floor-seam-"+i} rotation={[-Math.PI/2,0,0]} position={[-15.5+i*2.58,0,4.5]}>
+      <planeGeometry args={[0.035,44]}/><meshStandardMaterial color="#17120f" roughness={1}/>
     </mesh>)}
     {/* Four enclosing walls and a high, dark ceiling rim. */}
     <mesh position={[0,7.2,-18]}><boxGeometry args={[34,14.4,0.65]}/><meshStandardMaterial color="#241b19" roughness={0.96}/></mesh>
-    <mesh position={[0,7.2,20]}><boxGeometry args={[34,14.4,0.65]}/><meshStandardMaterial color="#211917" roughness={0.96}/></mesh>
-    <mesh position={[-17,7.2,1]}><boxGeometry args={[0.65,14.4,38]}/><meshStandardMaterial color="#2b201d" roughness={0.96}/></mesh>
-    <mesh position={[17,7.2,1]}><boxGeometry args={[0.65,14.4,38]}/><meshStandardMaterial color="#2b201d" roughness={0.96}/></mesh>
-    <mesh position={[0,14.2,1]}><boxGeometry args={[34,0.5,38]}/><meshStandardMaterial color="#120e0e" roughness={1}/></mesh>
+    <group ref={frontWallGroup}>
+      <mesh position={[0,7.2,27]}><boxGeometry args={[34,14.4,0.65]}/><meshStandardMaterial color="#211917" roughness={0.96}/></mesh>
+      {[-13,-8,-3,3,8,13].map(x=><mesh key={"front-pilaster-"+x} position={[x,6.8,26.55]}><boxGeometry args={[0.42,13.5,0.35]}/><meshStandardMaterial color="#4a3429" roughness={0.88}/></mesh>)}
+    </group>
+    <mesh position={[-17,7.2,4.5]}><boxGeometry args={[0.65,14.4,45]}/><meshStandardMaterial color="#2b201d" roughness={0.96}/></mesh>
+    <mesh position={[17,7.2,4.5]}><boxGeometry args={[0.65,14.4,45]}/><meshStandardMaterial color="#2b201d" roughness={0.96}/></mesh>
+    <mesh position={[0,14.2,4.5]}><boxGeometry args={[34,0.5,45]}/><meshStandardMaterial color="#120e0e" roughness={1}/></mesh>
     {/* Wall paneling, pilasters and dim gothic sconces. */}
     {[-14,-10,-6,6,10,14].map(x=><group key={"back-panel-"+x} position={[x,4.8,-17.55]}>
       <mesh><boxGeometry args={[2.65,8.4,0.18]}/><meshStandardMaterial color="#382823" roughness={0.86}/></mesh>
       <mesh position={[0,0,0.12]}><boxGeometry args={[2.28,7.9,0.06]}/><meshStandardMaterial color="#241917" roughness={0.9}/></mesh>
       <mesh position={[0,2.1,0.2]}><sphereGeometry args={[0.2,14,10]}/><meshStandardMaterial color="#a33c22" emissive="#7d210f" emissiveIntensity={0.65}/></mesh>
     </group>)}
-    {[-13,-8,-3,3,8,13].map(x=><mesh key={"front-pilaster-"+x} position={[x,6.8,19.55]}><boxGeometry args={[0.42,13.5,0.35]}/><meshStandardMaterial color="#4a3429" roughness={0.88}/></mesh>)}
-    {[-14,14].map(x=><group key={"side-pilasters-"+x}>
+     {[-14,14].map(x=><group key={"side-pilasters-"+x}>
       {[-13,-5,3,11].map(z=><mesh key={z} position={[x,6.6,z]}><boxGeometry args={[0.35,13,0.42]}/><meshStandardMaterial color="#49352b" roughness={0.9}/></mesh>)}
     </group>)}
     {/* Large circular, worn carpet in the center of the hall. */}
@@ -230,15 +252,18 @@ function MansionRoom() {
       <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.016,0]}><circleGeometry args={[1.05,48]}/><meshStandardMaterial color="#2c1114" roughness={1}/></mesh>
     </group>
     {/* Monumental central staircase, upper landing and two branching galleries. */}
-    {Array.from({length:13},(_,i)=><mesh key={"stair-"+i} position={[0,0.18+i*0.275,5.1-i*0.59]} castShadow receiveShadow>
-      <boxGeometry args={[5.8,0.38,0.78]}/><meshStandardMaterial color={i%2?stone:"#40332b"} roughness={0.92}/>
+    {Array.from({length:13},(_,i)=><mesh key={"stair-"+i} position={[0,0.17+i*0.26,5.1-i*0.59]} castShadow receiveShadow>
+      <boxGeometry args={[5.8,0.34,0.78]}/><meshStandardMaterial color={i%2?stone:"#40332b"} roughness={0.92}/>
     </mesh>)}
-    {Array.from({length:13},(_,i)=><mesh key={"stair-nosing-"+i} position={[0,0.38+i*0.275,4.72-i*0.59]} castShadow>
+    {Array.from({length:13},(_,i)=><mesh key={"stair-nosing-"+i} position={[0,0.36+i*0.26,4.72-i*0.59]} castShadow>
       <boxGeometry args={[5.86,0.075,0.12]}/><meshStandardMaterial color={brass} metalness={0.28} roughness={0.62}/>
     </mesh>)}
-    <mesh position={[0,3.65,-2.85]} castShadow receiveShadow><boxGeometry args={[7.1,0.55,2.5]}/><meshStandardMaterial color="#49382e" roughness={0.88}/></mesh>
+    {/* Continuous upper-storey deck connecting the landing and both galleries. */}
+    <mesh position={[0,3.29,-3.05]} castShadow receiveShadow>
+      <boxGeometry args={[24.4,0.42,3.8]}/><meshStandardMaterial color="#49382e" roughness={0.88}/>
+    </mesh>
     {[-1,1].map(side=><group key={"upper-wing-"+side}>
-      <mesh position={[side*7.25,3.55,-3.05]} castShadow receiveShadow><boxGeometry args={[8.8,0.48,2.55]}/><meshStandardMaterial color="#3d3029" roughness={0.9}/></mesh>
+       
       <mesh position={[side*7.25,4.2,-4.22]}><boxGeometry args={[8.8,0.12,0.12]}/><meshStandardMaterial color={brass} metalness={0.32}/></mesh>
       {[-1,1].map(edge=><mesh key={edge} position={[side*7.25+edge*4.28,3.98,-3.05]}><boxGeometry args={[0.14,0.9,2.55]}/><meshStandardMaterial color={wood}/></mesh>)}
       {Array.from({length:8},(_,i)=><mesh key={"baluster-"+i} position={[side*(3.2+i*1.16),3.98,-4.22]}><boxGeometry args={[0.09,0.72,0.09]}/><meshStandardMaterial color={wood}/></mesh>)}
@@ -864,7 +889,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
         group.position.y=e.kind==="crawler"?Math.abs(Math.sin(e.animation))*0.035:Math.sin(e.animation*2)*0.025;
       }
       e.x=THREE.MathUtils.clamp(e.x,phase===1?-25.2:-15.5,phase===1?61.5:15.5);
-      e.z=THREE.MathUtils.clamp(e.z,phase===1?-1.35:-16.2,phase===1?1.35:18.5);
+      e.z=THREE.MathUtils.clamp(e.z,phase===1?-1.35:-16.2,phase===1?1.35:25.5);
       group.position.x=e.x;group.position.z=e.z;
     });
 
@@ -917,12 +942,12 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       }
     }else{
       player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-15.1,15.1);
-      player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-15.6,13.4);
+      player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-15.6,20.4);
       // Walkable height follows the central staircase and its upper left/right galleries.
       const stairX=Math.abs(player.current.position.x);
       const stairZ=player.current.position.z;
       const onStair=stairX<=2.95&&stairZ>=-2.25&&stairZ<=5.2;
-      const onUpperGallery=stairZ>=-4.35&&stairZ<=-1.55&&stairX<=12.0;
+      const onUpperGallery=stairZ>=-4.8&&stairZ<=-1.25&&stairX<=12.0;
       if(onUpperGallery)player.current.position.y=3.5;
       else if(onStair)player.current.position.y=THREE.MathUtils.clamp((5.2-stairZ)/7.45,0,1)*3.5;
       else player.current.position.y=0;
@@ -937,9 +962,9 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       camera.position.y=4.6;
       camera.lookAt(camera.position.x,3.2,0);
     }else{
-      camera.position.x=THREE.MathUtils.damp(camera.position.x,targetX,4.2,dt);
-      camera.position.y=THREE.MathUtils.damp(camera.position.y,8.4+playerHeight,3.2,dt);
-      camera.position.z=THREE.MathUtils.damp(camera.position.z,targetZ+6.8,4.2,dt);
+      // Rigid follow offset prevents the room from swaying as Rick changes direction.
+      camera.position.set(targetX,8.4+playerHeight,targetZ+6.8);
+      camera.up.set(0,1,0);
       camera.lookAt(targetX,1.7+playerHeight,targetZ-2.6);
     }
     if(size.width>0){const aspect=size.width/Math.max(1,size.height);const halfH=phase===1?5.4:7.4;const ortho=camera as THREE.OrthographicCamera;ortho.zoom=1;ortho.left=-halfH*aspect;ortho.right=halfH*aspect;ortho.top=halfH;ortho.bottom=-halfH;ortho.updateProjectionMatrix();}
@@ -950,7 +975,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     <ambientLight intensity={0.78}/>
     <directionalLight position={[-6,12,10]} intensity={1.55} castShadow shadow-mapSize={[2048,2048]}/>
     <pointLight position={[10,5,3]} intensity={0.45} color="#8d3330"/>
-    {phase===1?<Exterior/>:<MansionRoom/>}
+    {phase===1?<Exterior/>:<MansionRoom player={player}/>}
     {phase===1&&<group position={[-24,0,0]}><mesh position={[0,0.02,0]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[0.48,0.56,32]}/><meshBasicMaterial color="#7d342d"/></mesh></group>}
     <group ref={player}><RickTaylorCharacter motion={motion.current} equippedWeapon={equipped}/></group>
 
