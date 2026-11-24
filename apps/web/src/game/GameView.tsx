@@ -687,9 +687,12 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
         const nextX=THREE.MathUtils.clamp(px+stepX,-15.1,15.1);
         const nextZ=THREE.MathUtils.clamp(pz+stepZ,-17.25,20.4);
         const onStairNow=Math.abs(px)<=2.95&&pz>=-2.45&&pz<=5.35&&player.current.position.y>0.05;
+        const onDeckNow=player.current.position.y>2.5&&Math.abs(px)<=12.0&&pz>=-17.25&&pz<=-1.55;
         const entersStairFromFront=pz>4.75&&nextZ<pz&&Math.abs(nextX)<=2.85&&nextZ>=-2.45&&nextZ<=5.35;
         if(entersStairFromFront)upperDeckAccess.current=true;
-        const blockedByStair=(x:number,z:number)=>Math.abs(x)<3.25&&z>-2.55&&z<5.55&&!upperDeckAccess.current;
+        // Ground-level access to the stair footprint is allowed only from its front;
+        // an already elevated player may descend from the upper landing.
+        const blockedByStair=(x:number,z:number)=>Math.abs(x)<3.25&&z>-2.55&&z<5.55&&!onStairNow&&!onDeckNow&&!entersStairFromFront;
         const blockedByFurniture=(x:number,z:number)=>{
           const sofa=((x+10.2)/2.45)**2+((z-1.8)/1.22)**2<1;
           const chairA=Math.hypot(x-8.4,z-4.8)<0.92;
@@ -997,6 +1000,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
       if(onUpperGallery)player.current.position.y=3.5;
       else if(onStair)player.current.position.y=THREE.MathUtils.clamp((5.2-stairZ)/7.45,0,1)*3.5;
       else player.current.position.y=0;
+      if(!onUpperGallery&&!onStair&&player.current.position.y<0.05)upperDeckAccess.current=false;
       const underUpperDeck=player.current.position.y<2.5&&stairX<=12.25&&stairZ>=-17.25&&stairZ<=-2.55;
       player.current.visible=!underUpperDeck;
     }
