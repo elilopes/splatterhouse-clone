@@ -114,7 +114,6 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const { camera, size } = useThree();
   const player=useRef<THREE.Group>(null);
   const enemyGroups=useRef<(THREE.Group|null)[]>([]);
-  const pickupGroups=useRef<(THREE.Group|null)[]>([]);
   const enemies=useRef<EnemyState[]>(initialEnemies.map(e=>({...e})));
   const pickups=useRef<PickupState[]>(initialPickups.map(p=>({...p})));
   const motion=useRef<RickMotion>({moving:false,attackTime:0,grabTime:0,jumpHeight:0});
@@ -123,7 +122,6 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const [ammo,setAmmo]=useState(6);
   const facing=useRef(1);
   const attackCooldown=useRef(0),grabCooldown=useRef(0),jumpVelocity=useRef(0),grounded=useRef(true);
-  const cameraTarget=useRef(new THREE.Vector3(-14,1.9,0));
   const [,setEnemyVersion]=useState(0);
   const lastActions=useRef({attack:false,grab:false,jump:false,pickup:false});
   const keys=useRef(new Set<string>());
@@ -173,7 +171,7 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
     {phase===1&&<group position={[-14,0,0]}><mesh position={[0,0.02,0]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[0.48,0.56,32]}/><meshBasicMaterial color="#7d342d"/></mesh></group>}
     <group ref={player}><RickTaylorCharacter motion={motion.current}/>{equipped&&<group position={[facing.current*0.48,1.12,-0.22]}><WeaponModel id={equipped}/></group>}</group>
     {enemies.current.map((e,i)=>e.alive&&<group key={i} ref={node=>{enemyGroups.current[i]=node;}} position={[e.x,0,e.z]}><EnemyModel kind={e.kind}/></group>)}
-    {phase===1&&pickups.current.map((p,i)=>!p.collected&&<group key={p.id} ref={node=>{pickupGroups.current[i]=node;}} position={[p.x,0.16,p.z]}>
+    {phase===1&&pickups.current.map((p,i)=>!p.collected&&<group key={p.id} position={[p.x,0.16,p.z]}>
       <mesh rotation={[-Math.PI/2,0,0]}><torusGeometry args={[0.58,0.035,8,24]}/><meshStandardMaterial color="#db6b42" emissive="#612012"/></mesh>
       <group position={[0,0.18,0]}><WeaponModel id={p.id}/></group>
     </group>)}
@@ -205,7 +203,7 @@ export default function GameView({onScore,onKill,paused,onStageChange}:Props) {
       onPointerDown={e=>{e.preventDefault();joystickInput.current.pointerId=e.pointerId;e.currentTarget.setPointerCapture(e.pointerId);updateJoystick(e);}}
       onPointerMove={e=>{if(joystickInput.current.pointerId===e.pointerId)updateJoystick(e);}}
       onPointerUp={releaseJoystick} onPointerCancel={releaseJoystick}
-      onLostPointerCapture={()=>{joystickInput.current={x:0,y:0,pointerId:-1};setKnob({x:0,y:0});}}>
+      onLostPointerCapture={()=>{joystickInput.current={x:0,y:0,pointerId:-1};controls.current.horizontal=0;controls.current.depth=0;setKnob({x:0,y:0});}}>
       <span className="virtual-joystick-ring"/><span className="virtual-joystick-knob" style={{transform:"translate(calc(-50% + "+knob.x+"px), calc(-50% + "+knob.y+"px))"}}/><span className="virtual-joystick-label">MOVE</span>
     </div>
   </div>;
