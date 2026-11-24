@@ -13,6 +13,7 @@ type Props = {
 };
 
 type WeaponId = "pipe" | "machete" | "shotgun";
+type EnemyKind = "crawler" | "brute" | "spitter";
 type Enemy = {
   root: TransformNode;
   body: Mesh;
@@ -22,6 +23,9 @@ type Enemy = {
   velocity: Vector3;
   attackCooldown: number;
   crushed: boolean;
+  kind: EnemyKind;
+  animatedParts: Mesh[];
+  animationTime: number;
 };
 
 const mat = (scene: Scene, name: string, color: Color3, emissive?: Color3) => {
@@ -115,18 +119,65 @@ function buildInterior(scene: Scene) {
   box(scene,"interior-exit-dark",{width:1.8,height:3.15,depth:0.12},new Vector3(8.1,1.58,1.72),dark);
 }
 
-function makeEnemy(scene: Scene, x: number, z: number, skin: StandardMaterial, eyes: StandardMaterial): Enemy {
-  const root = new TransformNode("slime-creature-root", scene);
+function makeEnemy(scene: Scene, x: number, z: number, skin: StandardMaterial, eyes: StandardMaterial, gore: StandardMaterial, kind: EnemyKind = "crawler"): Enemy {
+  const root = new TransformNode(`monster-${kind}-root`, scene);
   root.position.set(x, 0, z);
-  const body = MeshBuilder.CreateCapsule("slime-creature-body", {height:1.55, radius:0.42, tessellation:7, subdivisions:1}, scene);
-  body.parent=root; body.position.y=0.83; body.material=skin; body.isPickable=false;
-  const head = MeshBuilder.CreateSphere("slime-creature-head", {diameter:0.76, segments:7}, scene);
-  head.parent=root; head.position.set(0,1.72,-0.02); head.material=skin; head.isPickable=false;
-  for(const side of [-1,1]){
-    const eye=MeshBuilder.CreateSphere("slime-creature-eye",{diameter:0.12,segments:5},scene);
-    eye.parent=root; eye.position.set(side*0.16,1.78,-0.34); eye.material=eyes; eye.isPickable=false;
+  const animatedParts: Mesh[] = [];
+  const addPart = (mesh: Mesh, position: Vector3, material: StandardMaterial, rotation = Vector3.Zero()) => {
+    mesh.parent = root;
+    mesh.position.copyFrom(position);
+    mesh.rotation.copyFrom(rotation);
+    mesh.material = material;
+    mesh.isPickable = false;
+    animatedParts.push(mesh);
+    return mesh;
+  };
+  const torso = MeshBuilder.CreateSphere(`monster-${kind}-torso`, {diameter:1, segments:8}, scene);
+  torso.scaling.set(kind === "brute" ? 1.18 : kind === "crawler" ? 1.25 : 0.92, kind === "crawler" ? 0.72 : 1.18, kind === "spitter" ? 0.9 : 0.82);
+  addPart(torso, new Vector3(0, kind === "crawler" ? 0.62 : 0.9, 0), skin);
+  const body = MeshBuilder.CreateCapsule(`monster-${kind}-body`, {height: kind === "brute" ? 1.65 : 1.25, radius: kind === "brute" ? 0.48 : 0.39, tessellation:8, subdivisions:1}, scene);
+  addPart(body, new Vector3(0, kind === "crawler" ? 0.72 : 0.92, 0), skin);
+  const head = MeshBuilder.CreateSphere(`monster-${kind}-head`, {diameter: kind === "brute" ? 0.92 : 0.72, segments:8}, scene);
+  addPart(head, new Vector3(kind === "spitter" ? 0.12 : 0, kind === "crawler" ? 1.08 : 1.72, -0.04), skin);
+  const jaw = MeshBuilder.CreateSphere(`monster-${kind}-jaw`, {diameter:0.48, segments:7}, scene);
+  jaw.scaling.set(1.2,0.45,0.8);
+  addPart(jaw, new Vector3(0, kind === "crawler" ? 0.91 : 1.48, -0.27), gore);
+  for (const side of [-1,1]) {
+    const eye = MeshBuilder.CreateSphere(`monster-${kind}-eye`, {diameter: kind === "brute" ? 0.16 : 0.13, segments:6}, scene);
+    addPart(eye, new Vector3(side*0.19, kind === "crawler" ? 1.12 : 1.78, -0.34), eyes);
+    const arm = MeshBuilder.CreateCapsule(`monster-${kind}-arm`, {height: kind === "brute" ? 1.15 : 0.9, radius: kind === "brute" ? 0.2 : 0.13, tessellation:6}, scene);
+    addPart(arm, new Vector3(side*(kind === "brute" ? 0.58 : 0.48), kind === "crawler" ? 0.57 : 0.92, -0.02), skin, new Vector3(0,0,side*0.72));
+    const claw = MeshBuilder.CreateCylinder(`monster-${kind}-claw`, {height:0.34, diameterTop:0.025, diameterBottom:0.17, tessellation:6}, scene);
+    addPart(claw, new Vector3(side*(kind === "brute" ? 0.78 : 0.66), kind === "crawler" ? 0.2 : 0.45, -0.12), gore, new Vector3(0,0,side*0.5));
+    const leg = MeshBuilder.CreateCapsule(`monster-${kind}-leg`, {height: kind === "crawler" ? 0.78 : 0.95, radius:0.17, tessellation:6}, scene);
+    addPart(leg, new Vector3(side*0.25, kind === "crawler" ? 0.22 : 0.38, 0.08), skin, new Vector3(0,0,side*0.24));
   }
-  return {root,body,head,health:2,alive:true,velocity:Vector3.Zero(),attackCooldown:0,crushed:false};
+  if (kind === "brute") {
+    for (let i=0;i<5;i++) {
+      const spike = MeshBuilder.CreateCylinder(`brute-spine-${i}`, {height:0.48, diameterTop:0, diameterBottom:0.22, tessellation:5}, scene);
+      addPart(spike, new Vector3(-0.38+i*0.19,1.62,-0.02), gore, new Vector3(0,0,-0.28));
+    }
+    const hump = MeshBuilder.CreateSphere("brute-hump", {diameter:0.82,segments:7}, scene);
+    hump.scaling.set(1.1,0.8,0.8); addPart(hump,new Vector3(-0.08,1.42,0.18),skin);
+  } else if (kind === "spitter") {
+    const sac = MeshBuilder.CreateSphere("spitter-throat-sac",{diameter:0.62,segments:7},scene);
+    sac.scaling.set(0.75,1.25,0.75); addPart(sac,new Vector3(0.28,1.05,-0.1),gore);
+    for(let i=0;i<3;i++){
+      const tendril=MeshBuilder.CreateCylinder(`spitter-tendril-${i}`,{height:0.72,diameterTop:0.035,diameterBottom:0.12,tessellation:6},scene);
+      addPart(tendril,new Vector3(-0.35+i*0.34,0.38,-0.22),gore,new Vector3(0,0,(i-1)*0.48));
+    }
+  } else {
+    for(let i=0;i<4;i++){
+      const rib=MeshBuilder.CreateSphere(`crawler-rib-${i}`,{diameter:0.28,segments:6},scene);
+      rib.scaling.set(1.4,0.45,0.7); addPart(rib,new Vector3(-0.28+i*0.18,0.7,0.28),gore);
+    }
+  }
+  for(let i=0;i<4;i++){
+    const tooth=MeshBuilder.CreateCylinder(`monster-${kind}-tooth-${i}`,{height:0.18,diameterTop:0,diameterBottom:0.075,tessellation:5},scene);
+    addPart(tooth,new Vector3(-0.18+i*0.12,kind==="crawler"?0.9:1.42,-0.42),new StandardMaterial(`monster-tooth-material-${kind}`,scene));
+    (tooth.material as StandardMaterial).diffuseColor=new Color3(0.82,0.72,0.52);
+  }
+  return {root,body,head,health:kind==="brute"?3:2,alive:true,velocity:Vector3.Zero(),attackCooldown:0,crushed:false,kind,animatedParts,animationTime:Math.random()*6};
 }
 
 function makeWeapon(scene: Scene, id: WeaponId, position: Vector3, metal: StandardMaterial, wood: StandardMaterial, glow: StandardMaterial) {
@@ -204,7 +255,9 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
     player.position.set(-14,0,0);
     const keys=new Set<string>();
     const enemies: Enemy[]=[];
-    const enemySkin=mat(scene,"enemy-flesh",new Color3(0.28,0.34,0.19));
+    const enemySkin=mat(scene,"enemy-flesh",new Color3(0.34,0.075,0.065));
+    const bruteSkin=mat(scene,"enemy-brute-flesh",new Color3(0.24,0.16,0.09));
+    const spitterSkin=mat(scene,"enemy-spitter-flesh",new Color3(0.38,0.19,0.12));
     const enemyEyes=mat(scene,"enemy-eyes",new Color3(0.65,0.04,0.025),new Color3(0.25,0.01,0.005));
     const blood=mat(scene,"enemy-blood",new Color3(0.25,0.012,0.018));
     const metal=mat(scene,"weapon-metal",new Color3(0.42,0.43,0.40));
@@ -233,8 +286,14 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
       heldWeapon.setEnabled(true);
     };
     heldWeapon.setEnabled(false);
-    const spawnEnemy=(x:number,z:number)=>enemies.push(makeEnemy(scene,x,z,enemySkin,enemyEyes));
-    [-11.2,-9.4,-4.6,-2.8,2.6,4.4,7.0,9.2].forEach((x,i)=>spawnEnemy(x,i%2===0?-0.75:0.75));
+    const spawnEnemy=(x:number,z:number,kind:EnemyKind="crawler")=>enemies.push(makeEnemy(scene,x,z,kind==="brute"?bruteSkin:kind==="spitter"?spitterSkin:enemySkin,enemyEyes,blood,kind));
+    const enemySpawns: {x:number;z:number;kind:EnemyKind}[]=[
+      {x:-11.2,z:-0.75,kind:"crawler"},{x:-9.4,z:0.75,kind:"crawler"},
+      {x:-4.6,z:-0.75,kind:"spitter"},{x:-2.8,z:0.75,kind:"crawler"},
+      {x:2.6,z:-0.75,kind:"brute"},{x:4.4,z:0.75,kind:"crawler"},
+      {x:7.0,z:-0.75,kind:"spitter"},{x:9.2,z:0.75,kind:"brute"}
+    ];
+    enemySpawns.forEach(({x,z,kind})=>spawnEnemy(x,z,kind));
     const buildRoom=()=>{if(interiorBuilt)return;interiorBuilt=true;buildInterior(scene);};
     const nearestEnemy=(range:number)=>{
       let found:Enemy|null=null;let distance=range;
@@ -326,6 +385,14 @@ export default function GameView({ onScore, onKill, paused, onStageChange }: Pro
         for(const enemy of enemies){
           if(!enemy.alive)continue;
           enemy.attackCooldown=Math.max(0,enemy.attackCooldown-dt);
+          enemy.animationTime+=dt*(enemy.kind==="crawler"?8:enemy.kind==="brute"?3.2:5);
+          const gait=Math.sin(enemy.animationTime);
+          enemy.animatedParts.forEach((part,index)=>{
+            if(part.name.includes("-arm"))part.rotation.z=(index%2===0?1:-1)*(0.45+gait*0.22);
+            else if(part.name.includes("-leg"))part.rotation.z=gait*0.28*(index%2===0?1:-1);
+            else if(part.name.endsWith("-head"))part.rotation.z=Math.sin(enemy.animationTime*0.5)*0.06;
+          });
+          enemy.root.position.y=enemy.kind==="crawler"?Math.abs(gait)*0.035:Math.sin(enemy.animationTime*2)*0.025;
           if(Math.abs(enemy.velocity.x)>0.08){
             enemy.root.position.x+=enemy.velocity.x*dt;enemy.root.position.z+=enemy.velocity.z*dt;
             enemy.velocity.scaleInPlace(Math.max(0,1-dt*(equipped==="pipe"?1.5:2.8)));
