@@ -367,7 +367,6 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
   const nextEffectId=useRef(1);
   const nextEnemyId=useRef(100);
   const triggeredWaves=useRef(new Set<number>());
-  const phase2Spawned=useRef(false);
   const enemies=useRef<EnemyState[]>(initialEnemies.map(e=>({...e})));
   const pickups=useRef<PickupState[]>(initialPickups.map(p=>({...p})));
   const motion=useRef<RickMotion>({moving:false,attackTime:0,attackStyle:null,attackProgress:0,grabTime:0,jumpHeight:0,weapon:null});
@@ -912,7 +911,6 @@ function World({onScore,onKill,paused,onStageChange,controls}:WorldProps) {
           [14.0,8.0,"crawler"],[-5.5,15.0,"spitter"],[7.0,15.2,"brute"]
         ] as const;
         hallWave.forEach((spawn,idx)=>enemies.current.push(makeEnemy(nextEnemyId.current++,spawn[0],spawn[1],spawn[2],idx*1.4,true)));
-        phase2Spawned.current=true;
         severedHeads.current=[];
         bloodPools.current=[];
         setEnemyVersion(v=>v+1);
