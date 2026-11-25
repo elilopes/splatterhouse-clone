@@ -4,7 +4,7 @@ import * as THREE from "three";
 
 export type RickWeaponId = "sickle" | "pipe" | "machete" | "shotgun";
 
-export type RickPipeAttackStyle = "bat" | "overhead" | "macheteHead" | "macheteArm";
+export type RickPipeAttackStyle = "bat" | "overhead" | "macheteHead" | "macheteArm" | "slash" | "sweep";
 
 export type RickMotion = {
   moving: boolean;
@@ -14,6 +14,8 @@ export type RickMotion = {
   grabTime: number;
   jumpHeight: number;
   weapon: RickWeaponId | null;
+  slideTime?: number;
+  specialMove?: "slide" | "slash" | "sweep" | null;
   shotgunAimPitch?: number;
   shotgunAimYaw?: number;
 };
@@ -1563,27 +1565,29 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     leftElbowBone.rotation.x = nextLElbow;
     rightElbowBone.rotation.x = nextRElbow;
 
+    const sliding=THREE.MathUtils.clamp((motion.slideTime??0)/0.58,0,1);
+    const sweeping=motion.specialMove==="sweep"?1:0;
     leftThighBone.rotation.x = THREE.MathUtils.damp(
       leftThighBone.rotation.x,
-      motion.moving ? stride * 0.48 : 0.015 * Math.sin(t),
+      sweeping?1.18:sliding?0.78:motion.moving ? stride * 0.48 : 0.015 * Math.sin(t),
       12,
       dt
     );
     rightThighBone.rotation.x = THREE.MathUtils.damp(
       rightThighBone.rotation.x,
-      motion.moving ? oppositeStride * 0.48 : -0.015 * Math.sin(t),
+      sweeping?-0.72:sliding?0.55:motion.moving ? oppositeStride * 0.48 : -0.015 * Math.sin(t),
       12,
       dt
     );
     leftKneeBone.rotation.x = THREE.MathUtils.damp(
       leftKneeBone.rotation.x,
-      motion.moving ? -swing * 0.82 : 0,
+      sweeping?-0.35:sliding?-0.18:motion.moving ? -swing * 0.82 : 0,
       14,
       dt
     );
     rightKneeBone.rotation.x = THREE.MathUtils.damp(
       rightKneeBone.rotation.x,
-      motion.moving ? -oppositeSwing * 0.82 : 0,
+      sweeping?-0.95:sliding?-0.18:motion.moving ? -oppositeSwing * 0.82 : 0,
       14,
       dt
     );
@@ -1645,7 +1649,8 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     if (muzzleRef.current) {
       muzzleRef.current.visible = activeWeapon === "shotgun" && motion.attackTime > 0 && p >= 0.18 && p <= 0.40;
     }
-    root.current.position.y = motion.jumpHeight;
+    root.current.position.y = motion.jumpHeight - sliding*0.48 - sweeping*0.08;
+    root.current.rotation.x = THREE.MathUtils.damp(root.current.rotation.x,sliding*0.18+sweeping*0.06,18,dt);
   });
 
   return (
