@@ -101,7 +101,7 @@ function applyRickBody3DMM(
   geometry.computeBoundingSphere();
 }
 
-export type RickPipeAttackStyle = "bat" | "overhead" | "macheteHead" | "macheteArm" | "slash" | "sweep";
+export type RickPipeAttackStyle = "bat" | "overhead" | "macheteHead" | "macheteArm" | "sweep";
 
 export type RickPoseMode = "idle" | "walk" | "attack" | "grab" | "jump";
 
@@ -114,7 +114,7 @@ export type RickMotion = {
   jumpHeight: number;
   weapon: RickWeaponId | null;
   slideTime?: number;
-  specialMove?: "slide" | "slash" | "sweep" | null;
+  specialMove?: "slide" | "sweep" | null;
   shotgunAimPitch?: number;
   shotgunAimYaw?: number;
   leftFlex?: number;
@@ -1871,6 +1871,9 @@ export function RickTaylorRig({
       }
     }
 
+    const sliding = THREE.MathUtils.clamp((motion.slideTime ?? 0) / 0.58, 0, 1);
+    const sweeping = motion.specialMove === "sweep" ? 1 : 0;
+
     const skel = skinnedUpperBody.skeleton;
     if (skel && skel.bones.length >= 13) {
       const [
@@ -1906,12 +1909,7 @@ export function RickTaylorRig({
 
       neckBone.rotation.y = THREE.MathUtils.damp(neckBone.rotation.y, -torsoRotY * 0.25, 14, dt);
       headBone.rotation.y = THREE.MathUtils.damp(headBone.rotation.y, -torsoRotY * 0.4, 14, dt);
-      if(motion.specialMove==="slash"){
-        const slashP=THREE.MathUtils.clamp(p,0,1);
-        torsoRotY=slashP<0.45?THREE.MathUtils.lerp(-0.38,0.58,slashP/0.45):THREE.MathUtils.lerp(0.58,0,(slashP-0.45)/0.55);
-        rShoulderX=slashP<0.45?THREE.MathUtils.lerp(1.95,-0.38,slashP/0.45):THREE.MathUtils.lerp(-0.38,0.15,(slashP-0.45)/0.55);
-        rShoulderZ=slashP<0.45?-0.32:0.24;rElbowX=slashP<0.45?0.22:0.48;lShoulderX=0.62;lElbowX=0.92;
-      }else if(motion.specialMove==="sweep"){
+      if(motion.specialMove==="sweep"){
         torsoRotX=0.28;rShoulderX=0.72;lShoulderX=0.68;rElbowX=0.95;lElbowX=0.95;
       }else if(motion.specialMove==="slide"){
         torsoRotX=0.34;rShoulderX=0.95;lShoulderX=0.95;rElbowX=1.05;lElbowX=1.05;
@@ -1942,25 +1940,25 @@ export function RickTaylorRig({
 
       leftThighBone.rotation.x = THREE.MathUtils.damp(
         leftThighBone.rotation.x,
-        motion.moving ? stride * 0.48 : 0.015 * Math.sin(t),
-        12,
+        sweeping ? 1.18 : sliding ? 0.78 : motion.moving ? stride * 0.48 : 0.015 * Math.sin(t),
+        14,
         dt
       );
       rightThighBone.rotation.x = THREE.MathUtils.damp(
         rightThighBone.rotation.x,
-        motion.moving ? oppositeStride * 0.48 : -0.015 * Math.sin(t),
-        12,
+        sweeping ? -0.72 : sliding ? 0.55 : motion.moving ? oppositeStride * 0.48 : -0.015 * Math.sin(t),
+        14,
         dt
       );
       leftKneeBone.rotation.x = THREE.MathUtils.damp(
         leftKneeBone.rotation.x,
-        motion.moving ? -swing * 0.82 : 0,
+        sweeping ? -0.35 : sliding ? -0.18 : motion.moving ? -swing * 0.82 : 0,
         14,
         dt
       );
       rightKneeBone.rotation.x = THREE.MathUtils.damp(
         rightKneeBone.rotation.x,
-        motion.moving ? -oppositeSwing * 0.82 : 0,
+        sweeping ? -0.95 : sliding ? -0.18 : motion.moving ? -oppositeSwing * 0.82 : 0,
         14,
         dt
       );
@@ -2093,12 +2091,8 @@ export function RickTaylorRig({
       muzzleRef.current.visible =
         activeWeapon === "shotgun" && motion.attackTime > 0 && p >= 0.18 && p <= 0.4;
     }
-    const sliding=THREE.MathUtils.clamp((motion.slideTime??0)/0.58,0,1);
-    const sweeping=motion.specialMove==="sweep"?1:0;
     root.current.position.y = motion.jumpHeight - sliding*0.48 - sweeping*0.08;
     root.current.rotation.x = THREE.MathUtils.damp(root.current.rotation.x,sliding*0.18+sweeping*0.06,18,dt);
-    leftThighBone.rotation.x=THREE.MathUtils.damp(leftThighBone.rotation.x,sweeping?1.18:sliding?0.78:leftThighBone.rotation.x,18,dt);
-    rightThighBone.rotation.x=THREE.MathUtils.damp(rightThighBone.rotation.x,sweeping?-0.72:sliding?0.55:rightThighBone.rotation.x,18,dt);
   });
 
   const activeWeapon = equippedWeapon ?? motion.weapon;

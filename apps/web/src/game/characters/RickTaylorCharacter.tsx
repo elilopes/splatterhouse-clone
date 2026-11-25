@@ -4,7 +4,7 @@ import * as THREE from "three";
 
 export type RickWeaponId = "sickle" | "pipe" | "machete" | "shotgun";
 
-export type RickPipeAttackStyle = "bat" | "overhead" | "macheteHead" | "macheteArm" | "slash" | "sweep";
+export type RickPipeAttackStyle = "bat" | "overhead" | "macheteHead" | "macheteArm" | "sweep";
 
 export type RickMotion = {
   moving: boolean;
@@ -15,7 +15,7 @@ export type RickMotion = {
   jumpHeight: number;
   weapon: RickWeaponId | null;
   slideTime?: number;
-  specialMove?: "slide" | "slash" | "sweep" | null;
+  specialMove?: "slide" | "sweep" | null;
   shotgunAimPitch?: number;
   shotgunAimYaw?: number;
 };
@@ -1546,14 +1546,7 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
 
     neckBone.rotation.y = THREE.MathUtils.damp(neckBone.rotation.y, -torsoRotY * 0.25, 14, dt);
     headBone.rotation.y = THREE.MathUtils.damp(headBone.rotation.y, -torsoRotY * 0.40, 14, dt);
-    if(motion.specialMove==="slash"){
-      const slashP=THREE.MathUtils.clamp(p,0,1);
-      torsoRotY=slashP<0.45?THREE.MathUtils.lerp(-0.38,0.58,slashP/0.45):THREE.MathUtils.lerp(0.58,0,(slashP-0.45)/0.55);
-      rShoulderX=slashP<0.45?THREE.MathUtils.lerp(1.95, -0.38, slashP/0.45):THREE.MathUtils.lerp(-0.38,0.15,(slashP-0.45)/0.55);
-      rShoulderZ=slashP<0.45?-0.32:0.24;
-      rElbowX=slashP<0.45?0.22:0.48;
-      lShoulderX=0.62;lElbowX=0.92;
-    }else if(motion.specialMove==="sweep"){
+    if(motion.specialMove==="sweep"){
       torsoRotX=0.28;rShoulderX=0.72;lShoulderX=0.68;rElbowX=0.95;lElbowX=0.95;
     }else if(motion.specialMove==="slide"){
       torsoRotX=0.34;rShoulderX=0.95;lShoulderX=0.95;rElbowX=1.05;lElbowX=1.05;

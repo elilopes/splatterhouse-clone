@@ -78,7 +78,7 @@ const initialPickups: PickupState[] = [
 ];
 
 type WorldControls = {
-  horizontal:number; depth:number; attack:boolean; grab:boolean; jump:boolean; pickup:boolean; slide:boolean; slash:boolean; sweep:boolean;
+  horizontal:number; depth:number; attack:boolean; grab:boolean; jump:boolean; pickup:boolean; slide:boolean; sweep:boolean;
 };
 type TpsAimInput = { yawDelta:number; pitchDelta:number; ads:boolean; reload:boolean };
 type WorldProps = Omit<Props, "graphicsQuality"> & {
@@ -533,7 +533,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   const upperDeckAccess=useRef(false);
   const attackCooldown=useRef(0),grabCooldown=useRef(0),slideCooldown=useRef(0),jumpVelocity=useRef(0),grounded=useRef(true);
   const [,setEnemyVersion]=useState(0);
-  const lastActions=useRef({attack:false,grab:false,jump:false,pickup:false,slide:false,slash:false,sweep:false});
+  const lastActions=useRef({attack:false,grab:false,jump:false,pickup:false,slide:false,sweep:false});
   const keys=useRef(new Set<string>());
 
   // Phase 3 Uncharted TPS states
@@ -1207,19 +1207,19 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     player.current.position.x+=dir.x*3.35;
     player.current.position.z+=dir.z*3.35;
   };
-  const doSpecialStrike=(style:"slash"|"sweep")=>{
+  const doSpecialStrike=(style:"sweep")=>{
     if(attackCooldown.current>0||phase===3)return;
     attackCooldown.current=0.68;motion.current.attackTime=0.58;motion.current.attackStyle=style;motion.current.attackProgress=0;motion.current.specialMove=style;
-    const target=nearest(style==="sweep"?2.15:2.65,style==="sweep"?1.15:2.0,style==="sweep"?-0.1:-0.2);
+    const target=nearest(2.15,1.15,-0.1);
     if(!target)return;
-    if(target.kind==="brute"&&target.health>1){target.health-=1;target.vx=attackDirection.current.x*4.2;target.vz=attackDirection.current.z*4.2;target.fall=attackDirection.current.x||attackDirection.current.z||facing.current;spawnGore(target.x,style==="sweep"?0.55:1.35,target.z,14,4.5);setEnemyVersion(v=>v+1);return;}
+    if(target.kind==="brute"&&target.health>1){target.health-=1;target.vx=attackDirection.current.x*4.2;target.vz=attackDirection.current.z*4.2;target.fall=attackDirection.current.x||attackDirection.current.z||facing.current;spawnGore(target.x,0.55,target.z,14,4.5);setEnemyVersion(v=>v+1);return;}
     target.alive=false;target.bodyState="falling";target.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
-    target.vx=attackDirection.current.x*3.6;target.vz=attackDirection.current.z*3.6;target.vy=style==="sweep"?1.2:2.2;
-    spawnGore(target.x,style==="sweep"?0.55:1.35,target.z,20,5.0);addBloodPool(target.x,target.z,0.85);onKill();onScore(100);setEnemyVersion(v=>v+1);
+    target.vx=attackDirection.current.x*3.6;target.vz=attackDirection.current.z*3.6;target.vy=1.2;
+    spawnGore(target.x,0.55,target.z,20,5.0);addBloodPool(target.x,target.z,0.85);onKill();onScore(100);setEnemyVersion(v=>v+1);
   };
 
   useEffect(()=>{
-    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();keys.current.add(k);if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="k"&&phase!==3)doGrab();if(k===" "||k==="l")doJump();if(k==="c")doSlide();if(k==="x")doSpecialStrike("slash");if(k==="z")doSpecialStrike("sweep");if(k==="e"&&phase===1)doPickup();if(k==="v"&&phase===3){const next=equipped==="shotgun"?"sickle":"shotgun";setEquipped(next);motion.current.weapon=next;}if(k==="r"&&phase===3&&tpsReloadTimer.current<=0&&tpsAmmo.current<TPS_MAG_SIZE){tpsReloadTimer.current=1.05;}};
+    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();keys.current.add(k);if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="k"&&phase!==3)doGrab();if(k===" "||k==="l")doJump();if(k==="c")doSlide();if(k==="z")doSpecialStrike("sweep");if(k==="e"&&phase===1)doPickup();if(k==="v"&&phase===3){const next=equipped==="shotgun"?"sickle":"shotgun";setEquipped(next);motion.current.weapon=next;}if(k==="r"&&phase===3&&tpsReloadTimer.current<=0&&tpsAmmo.current<TPS_MAG_SIZE){tpsReloadTimer.current=1.05;}};
     const up=(e:KeyboardEvent)=>keys.current.delete(e.key.toLowerCase());
     window.addEventListener("keydown",down);window.addEventListener("keyup",up);return()=>{window.removeEventListener("keydown",down);window.removeEventListener("keyup",up);};
   });
@@ -1243,8 +1243,8 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     const c=controls.current;const prior=lastActions.current;
     const attackHeld=c.attack||keys.current.has("j");
     if(attackHeld&&!prior.attack)doAttack();if(c.grab&&!prior.grab)doGrab();if(c.jump&&!prior.jump)doJump();if(c.pickup&&!prior.pickup)doPickup();
-    if(c.slide&&!prior.slide)doSlide();if(c.slash&&!prior.slash)doSpecialStrike("slash");if(c.sweep&&!prior.sweep)doSpecialStrike("sweep");
-    lastActions.current={attack:attackHeld,grab:c.grab,jump:c.jump,pickup:c.pickup,slide:c.slide,slash:c.slash,sweep:c.sweep};
+    if(c.slide&&!prior.slide)doSlide();if(c.sweep&&!prior.sweep)doSpecialStrike("sweep");
+    lastActions.current={attack:attackHeld,grab:c.grab,jump:c.jump,pickup:c.pickup,slide:c.slide,sweep:c.sweep};
     attackCooldown.current=Math.max(0,attackCooldown.current-dt);grabCooldown.current=Math.max(0,grabCooldown.current-dt);slideCooldown.current=Math.max(0,slideCooldown.current-dt);
     motion.current.slideTime=Math.max(0,(motion.current.slideTime??0)-dt);
     if(motion.current.slideTime<=0&&motion.current.specialMove==="slide")motion.current.specialMove=null;
@@ -2120,12 +2120,12 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
   const joystickRef=useRef<HTMLDivElement>(null);
   const joystickInput=useRef({x:0,y:0,pointerId:-1});
   const [knob,setKnob]=useState({x:0,y:0});
-  const controls=useRef<WorldControls>({horizontal:0,depth:0,attack:false,grab:false,jump:false,pickup:false,slide:false,slash:false,sweep:false});
+  const controls=useRef<WorldControls>({horizontal:0,depth:0,attack:false,grab:false,jump:false,pickup:false,slide:false,sweep:false});
   const updateJoystick=(event:ReactPointerEvent<HTMLDivElement>)=>{const el=joystickRef.current;if(!el)return;const r=el.getBoundingClientRect();const dx=event.clientX-(r.left+r.width/2),dy=event.clientY-(r.top+r.height/2),radius=r.width*0.34,d=Math.hypot(dx,dy),scale=d>radius?radius/d:1;const x=dx*scale,y=dy*scale;joystickInput.current.x=x/radius;joystickInput.current.y=y/radius;controls.current.horizontal=x/radius;controls.current.depth=y/radius;setKnob({x,y});};
   const releaseJoystick=(event:ReactPointerEvent<HTMLDivElement>)=>{if(joystickInput.current.pointerId!==event.pointerId)return;joystickInput.current={x:0,y:0,pointerId:-1};controls.current.horizontal=0;controls.current.depth=0;setKnob({x:0,y:0});if(joystickRef.current?.hasPointerCapture(event.pointerId))joystickRef.current.releasePointerCapture(event.pointerId);};
-  const setAction=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"slash"|"sweep",value:boolean)=>{controls.current[key]=value;};
-  const press=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"slash"|"sweep")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,true);};
-  const release=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"slash"|"sweep")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,false);};
+  const setAction=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"sweep",value:boolean)=>{controls.current[key]=value;};
+  const press=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"sweep")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,true);};
+  const release=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"sweep")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,false);};
   const handleStageChange=(stage:1|2|3)=>{
     setWorldPhase(stage);
     if(stage===2)setHDZoom(1);
@@ -2255,22 +2255,23 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
     </div>
     <div className="action-buttons" aria-label="Ações de Rick">
       <button type="button" className="action-button action-punch" aria-label={isPhase3?"Atirar com escopeta":"Soco ou ataque"} onPointerDown={press("attack")} onPointerUp={release("attack")} onPointerCancel={release("attack")} onPointerLeave={release("attack")}>{isPhase3?"ATIRAR":"SOCO"}</button>
-      {isPhase3 ? (
-        <button type="button" className={`action-button action-grab${tpsHud.ads?" is-active":""}`} aria-label="Mirar sobre o ombro" onPointerDown={e=>{e.preventDefault();tpsAimRef.current.ads=true;}} onPointerUp={e=>{e.preventDefault();tpsAimRef.current.ads=false;}} onPointerCancel={()=>{tpsAimRef.current.ads=false;}} onPointerLeave={()=>{tpsAimRef.current.ads=false;}}>MIRAR</button>
-      ) : (
-        <button type="button" className="action-button action-grab" aria-label="Agarrar e arremessar" onPointerDown={press("grab")} onPointerUp={release("grab")} onPointerCancel={release("grab")} onPointerLeave={release("grab")}>AGARRÃO</button>
-      )}
+      <div className="action-grab-column">
+        {isPhase3 ? (
+          <button type="button" className={`action-button action-grab${tpsHud.ads?" is-active":""}`} aria-label="Mirar sobre o ombro" onPointerDown={e=>{e.preventDefault();tpsAimRef.current.ads=true;}} onPointerUp={e=>{e.preventDefault();tpsAimRef.current.ads=false;}} onPointerCancel={()=>{tpsAimRef.current.ads=false;}} onPointerLeave={()=>{tpsAimRef.current.ads=false;}}>MIRAR</button>
+        ) : (
+          <button type="button" className="action-button action-grab" aria-label="Agarrar e arremessar" onPointerDown={press("grab")} onPointerUp={release("grab")} onPointerCancel={release("grab")} onPointerLeave={release("grab")}>AGARRÃO</button>
+        )}
+        {isPhase3 ? (
+          <button type="button" className="action-button action-pickup" aria-label="Recarregar escopeta" onPointerDown={e=>{e.preventDefault();tpsAimRef.current.reload=true;}}>RECAR.</button>
+        ) : (
+          <button type="button" className="action-button action-pickup" aria-label="Pegar próxima arma" onPointerDown={press("pickup")} onPointerUp={release("pickup")} onPointerCancel={release("pickup")} onPointerLeave={release("pickup")}>PEGAR</button>
+        )}
+      </div>
       <button type="button" className="action-button action-jump" aria-label="Pular" onPointerDown={press("jump")} onPointerUp={release("jump")} onPointerCancel={release("jump")} onPointerLeave={release("jump")}>PULO</button>
       {!isPhase3&&<>
         <button type="button" className="action-button action-slide" aria-label="Deslizar" onPointerDown={press("slide")} onPointerUp={release("slide")} onPointerCancel={release("slide")} onPointerLeave={release("slide")}>DESLIZAR</button>
-        <button type="button" className="action-button action-slash" aria-label="Slash" onPointerDown={press("slash")} onPointerUp={release("slash")} onPointerCancel={release("slash")} onPointerLeave={release("slash")}>SLASH</button>
         <button type="button" className="action-button action-sweep" aria-label="Rasteira" onPointerDown={press("sweep")} onPointerUp={release("sweep")} onPointerCancel={release("sweep")} onPointerLeave={release("sweep")}>RASTEIRA</button>
       </>}
-      {isPhase3 ? (
-        <button type="button" className="action-button action-pickup" aria-label="Recarregar escopeta" onPointerDown={e=>{e.preventDefault();tpsAimRef.current.reload=true;}}>RECAR.</button>
-      ) : (
-        <button type="button" className="action-button action-pickup" aria-label="Pegar próxima arma" onPointerDown={press("pickup")} onPointerUp={release("pickup")} onPointerCancel={release("pickup")} onPointerLeave={release("pickup")}>PEGAR</button>
-      )}
     </div>
     <div ref={joystickRef} className="virtual-joystick" role="application" aria-label="Joystick virtual para movimentar Rick"
       onPointerDown={e=>{e.preventDefault();joystickInput.current.pointerId=e.pointerId;e.currentTarget.setPointerCapture(e.pointerId);updateJoystick(e);}}
