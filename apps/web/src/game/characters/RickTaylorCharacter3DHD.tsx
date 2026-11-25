@@ -24,6 +24,83 @@ import {
 
 export type RickWeaponId = "sickle" | "pipe" | "machete" | "shotgun";
 
+/**
+ * Parâmetros morfológicos corporais inspirados em 3DMM.
+ * Os coeficientes são aplicados continuamente à superfície, preservando
+ * os detalhes anatômicos e os atributos de skinning da malha original.
+ */
+export type RickBody3DMMParams = {
+  shoulderWidth: number;
+  chestVolume: number;
+  waistTaper: number;
+  armMass: number;
+  pelvisWidth: number;
+  thighMass: number;
+  torsoDepth: number;
+};
+
+export const DEFAULT_RICK_BODY_3DMM: RickBody3DMMParams = {
+  shoulderWidth: 0.16,
+  chestVolume: 0.13,
+  waistTaper: 0.10,
+  armMass: 0.12,
+  pelvisWidth: 0.045,
+  thighMass: 0.10,
+  torsoDepth: 0.075,
+};
+
+function applyRickBody3DMM(
+  geometry: THREE.BufferGeometry,
+  params: RickBody3DMMParams,
+  region: "upper" | "lower"
+) {
+  const position = geometry.getAttribute("position") as THREE.BufferAttribute;
+  const skinIndex = geometry.getAttribute("skinIndex") as THREE.BufferAttribute | undefined;
+  const skinWeight = geometry.getAttribute("skinWeight") as THREE.BufferAttribute | undefined;
+  if (!position) return;
+
+  const smoothBand = (value: number, center: number, width: number) =>
+    Math.exp(-Math.pow((value - center) / width, 2));
+  for (let i = 0; i < position.count; i++) {
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const z = position.getZ(i);
+    const ax = Math.abs(x);
+    if (region === "upper") {
+      const shoulder = smoothBand(y, 1.61, 0.19) * smoothstep(0.20, 0.43, ax);
+      const chest = smoothBand(y, 1.58, 0.22) * smoothstep(0.05, 0.32, ax);
+      const waist = smoothBand(y, 1.25, 0.22);
+      const arm = smoothBand(y, 1.39, 0.28) * smoothstep(0.34, 0.48, ax);
+      const widthScale = 1 + params.shoulderWidth * shoulder + params.chestVolume * chest
+        - params.waistTaper * waist + params.armMass * arm;
+      const depthScale = 1 + params.torsoDepth * chest - params.waistTaper * waist * 0.28;
+      position.setXYZ(i, x * widthScale, y, z * depthScale);
+    } else {
+      const pelvis = smoothBand(y, 0.91, 0.15);
+      const thigh = smoothBand(y, 0.67, 0.24);
+      const widthScale = 1 + params.pelvisWidth * pelvis + params.thighMass * thigh;
+      position.setXYZ(i, x * widthScale, y, z * (1 + params.thighMass * thigh * 0.42));
+    }
+
+    // Garante pesos finitos, não negativos e normalizados após a deformação.
+    if (skinIndex && skinWeight) {
+      let total = 0;
+      for (let c = 0; c < 4; c++) {
+        const w = Math.max(0, skinWeight.getComponent(i, c));
+        skinWeight.setComponent(i, c, w);
+        total += w;
+      }
+      if (total > 1e-8) {
+        for (let c = 0; c < 4; c++) skinWeight.setComponent(i, c, skinWeight.getComponent(i, c) / total);
+      }
+    }
+  }
+  position.needsUpdate = true;
+  if (skinWeight) skinWeight.needsUpdate = true;
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+}
+
 export type RickPipeAttackStyle = "bat" | "overhead" | "macheteHead" | "macheteArm";
 
 export type RickPoseMode = "idle" | "walk" | "attack" | "grab" | "jump";
@@ -1372,6 +1449,7 @@ export function RickTaylorRig({
   } = useMemo(() => {
     const uBody = createUpperBodySkinnedGeometry();
     const trs = createTrousersSkinnedGeometry();
+    // 3DMM corporal paramétrico: silhueta atlética de Rick sem perder os detalhes esculpidos.\n    applyRickBody3DMM(uBody, DEFAULT_RICK_BODY_3DMM, "upper");\n    applyRickBody3DMM(trs, DEFAULT_RICK_BODY_3DMM, "lower");
     const msk = createTerrorMaskGeometry();
     const bt = createCombatBootGeometry();
     const cap = new THREE.CapsuleGeometry(0.12, 0.42, 12, 28);
