@@ -1966,7 +1966,11 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
   const zoomTargetRef=useRef(1);
   const [zoomDisplay,setZoomDisplay]=useState(1);
   const pinchDistRef=useRef<number|null>(null);
-  // Qualidade Alta força o Rick HD independentemente do backend gráfico.\n  // Automática usa o HD quando WebGPU está disponível; Standard mantém o Rick convencional.\n  const useHDCharacter=graphicsQuality==="high"||(graphicsQuality==="auto"&&rendererMode==="webgpu");\n  const isHDPhase2=useHDCharacter&&worldPhase===2;\n  const isPhase3=worldPhase===3;
+  // Qualidade Alta força o Rick HD independentemente do backend gráfico.
+  // Automática usa o HD quando WebGPU está disponível; Standard mantém o Rick convencional.
+  const useHDCharacter=graphicsQuality==="high"||(graphicsQuality==="auto"&&rendererMode==="webgpu");
+  const isHDPhase2=useHDCharacter&&worldPhase===2;
+  const isPhase3=worldPhase===3;
 
   const tpsAimRef=useRef<TpsAimInput>({yawDelta:0,pitchDelta:0,ads:false,reload:false});
   const lastMouseRef=useRef<{x:number;y:number}|null>(null);
