@@ -631,7 +631,9 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     const enhancedCount=Math.ceil(count*1.55);
     for(let i=0;i<enhancedCount;i++){
       const angle=(i/count)*Math.PI*2+Math.random()*0.4;
-      const spd=1.6+Math.random()*spread;
+      const styleAngle=style==="sickle"?-Math.PI/2+(Math.random()-0.5)*1.55:style==="pipe"?(i%2===0?0:Math.PI)+(Math.random()-0.5)*0.9:style==="machete"?-Math.PI/2+(Math.random()-0.5)*2.8:style==="shotgun"?Math.random()*Math.PI*2:angle;
+      const finalAngle=style==="generic"?angle:styleAngle;
+      const spd=style==="sickle"?2.2+Math.random()*spread:style==="pipe"?1.1+Math.random()*spread*0.7:style==="machete"?2.8+Math.random()*spread:style==="shotgun"?3.4+Math.random()*spread*1.35:1.6+Math.random()*spread;
       effects.current.push({
         id:nextEffectId.current++,kind:"gore",x,y,z,
         vx:Math.cos(finalAngle)*spd,vy:(style==="shotgun"?2.8:style==="machete"?2.2:1.6)+Math.random()*(style==="shotgun"?6:4.4),vz:Math.sin(finalAngle)*spd*(style==="pipe"?1.05:0.65),
@@ -2021,7 +2023,8 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
   useEffect(()=>{
     if(!isPhase3)return;
     const onKeyDown=(e:KeyboardEvent)=>{
-      if(e.key.toLowerCase()==="v"){const next=equipped==="shotgun"?"sickle":"shotgun";setEquipped(next);motion.current.weapon=next;}\n      if(e.key==="Shift")tpsAimRef.current.ads=true;
+      if(e.key.toLowerCase()==="v"){const next=equipped==="shotgun"?"sickle":"shotgun";setEquipped(next);motion.current.weapon=next;}
+      if(e.key==="Shift")tpsAimRef.current.ads=true;
     };
     const onKeyUp=(e:KeyboardEvent)=>{
       if(e.key==="Shift")tpsAimRef.current.ads=false;
