@@ -1201,7 +1201,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     setEnemyVersion(v=>v+1);
   };
   const doJump=()=>{if(!grounded.current)return;grounded.current=false;jumpVelocity.current=6.2;};
-  const doSuperJump=()=>{if(!player.current||!grounded.current||specialJumpCooldown.current>0||phase===3||!spendEnergy(34))return;specialJumpActive.current=true;specialJumpLanding.current=false;grounded.current=false;specialJumpCooldown.current=0.8;motion.current.specialMove="superJump";jumpVelocity.current=Math.sqrt(2*16.5*2);motion.current.jumpHeight=0;const d=attackDirection.current;player.current.position.x+=d.x*3;player.current.position.z+=d.z*3;};
+  const doSuperJump=()=>{if(!player.current||!grounded.current||specialJumpCooldown.current>0||phase===3||!spendEnergy(34))return;specialJumpActive.current=true;grounded.current=false;specialJumpCooldown.current=0.8;motion.current.specialMove="superJump";jumpVelocity.current=Math.sqrt(2*16.5*2);motion.current.jumpHeight=0;const d=attackDirection.current;player.current.position.x+=d.x*3;player.current.position.z+=d.z*3;};
   const doEscorrao=()=>{if(!player.current||escorraoCooldown.current>0||phase===3||!spendEnergy(67))return;escorraoCooldown.current=1;motion.current.specialMove="escorrao";motion.current.slideTime=0.42;const d=attackDirection.current;player.current.position.x+=d.x;player.current.position.z+=d.z;let hits=0;for(const e of enemies.current){if(!e.alive)continue;const dist=Math.hypot(e.x-player.current.position.x,e.z-player.current.position.z);if(dist>1.65)continue;hits++;e.vx=d.x*5.2;e.vz=d.z*5.2;e.vy=1;e.fall=d.x||d.z||facing.current;e.knocked=0.85;if(e.kind==="brute"&&e.health>1)e.health-=1;else{e.alive=false;e.bodyState="falling";e.knocked=0.65;addBloodPool(e.x,e.z,0.85);spawnGore(e.x,0.55,e.z,14,4.5);onKill();onScore(100);}}if(hits)setEnemyVersion(v=>v+1);};
   const doSlide=()=>{
     if(slideCooldown.current>0||!player.current||phase===3)return;
@@ -1250,8 +1250,8 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     lastActions.current={attack:attackHeld,grab:c.grab,jump:c.jump,pickup:c.pickup,slide:c.slide,sweep:c.sweep,superJump:c.superJump,escorrao:c.escorrao};
     attackCooldown.current=Math.max(0,attackCooldown.current-dt);grabCooldown.current=Math.max(0,grabCooldown.current-dt);slideCooldown.current=Math.max(0,slideCooldown.current-dt);
     motion.current.slideTime=Math.max(0,(motion.current.slideTime??0)-dt);specialJumpCooldown.current=Math.max(0,specialJumpCooldown.current-dt);escorraoCooldown.current=Math.max(0,escorraoCooldown.current-dt);
-    if(motion.current.slideTime<=0&&motion.current.specialMove==="slide")motion.current.specialMove=null;
-    if(motion.current.attackTime<=0&&motion.current.specialMove!=="slide")motion.current.specialMove=null;
+    if(motion.current.slideTime<=0&&(motion.current.specialMove==="slide"||motion.current.specialMove==="escorrao"||motion.current.specialMove==="impact"))motion.current.specialMove=null;
+    if(motion.current.attackTime<=0&&motion.current.specialMove==="sweep")motion.current.specialMove=null;
     spitHitCooldown.current=Math.max(0,spitHitCooldown.current-dt);
     if(phase===3){
       if(tpsAimRef.current.reload&&tpsReloadTimer.current<=0&&tpsAmmo.current<TPS_MAG_SIZE){
@@ -1360,7 +1360,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       attackDirection.current={x:fwdX,z:fwdZ};
       player.current.rotation.y=tpsYaw.current;
     }
-    if(!grounded.current){motion.current.jumpHeight=Math.max(0,motion.current.jumpHeight+jumpVelocity.current*dt);jumpVelocity.current-=16.5*dt;if(motion.current.jumpHeight<=0){motion.current.jumpHeight=0;jumpVelocity.current=0;grounded.current=true;if(specialJumpActive.current){specialJumpActive.current=false;motion.current.specialMove="impact";let count=0;for(const e of enemies.current){if(!e.alive||Math.hypot(e.x-player.current.position.x,e.z-player.current.position.z)>1.25)continue;count++;e.alive=false;e.health=0;e.bodyState="falling";e.knocked=0.65;e.vx=attackDirection.current.x*1.1;e.vz=attackDirection.current.z*1.1;e.vy=0;addBloodPool(e.x,e.z,1.15);spawnGore(e.x,0.22,e.z,26,5.8);onKill();onScore(100);}if(count)setEnemyVersion(v=>v+1);}}}
+    if(!grounded.current){motion.current.jumpHeight=Math.max(0,motion.current.jumpHeight+jumpVelocity.current*dt);jumpVelocity.current-=16.5*dt;if(motion.current.jumpHeight<=0){motion.current.jumpHeight=0;jumpVelocity.current=0;grounded.current=true;if(specialJumpActive.current){specialJumpActive.current=false;motion.current.specialMove="impact";motion.current.slideTime=0.25;let count=0;for(const e of enemies.current){if(!e.alive||Math.hypot(e.x-player.current.position.x,e.z-player.current.position.z)>1.25)continue;count++;e.alive=false;e.health=0;e.bodyState="falling";e.knocked=0.65;e.vx=attackDirection.current.x*1.1;e.vz=attackDirection.current.z*1.1;e.vy=0;addBloodPool(e.x,e.z,1.15);spawnGore(e.x,0.22,e.z,26,5.8);onKill();onScore(100);}if(count)setEnemyVersion(v=>v+1);}}}
     if(pipeCombo.current){
       const combo=pipeCombo.current;
       combo.elapsed+=dt;
