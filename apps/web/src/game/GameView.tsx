@@ -1310,7 +1310,7 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
     ))}
 
     {enemies.current.map((e)=>(e.alive||e.bodyState!=="alive")&&(phase!==1||e.id>14||initialEnemiesVisible)&&<group key={e.id} ref={node=>{enemyGroups.current[e.id]=node;}} position={[e.x,e.y,e.z]}>
-      <MonsterProceduralCharacter kind={e.kind} headless={e.headless} missingArm={e.severedArm} animation={e.animation} fallen={e.bodyState==="fallen"||e.bodyState==="grabFallen"||e.bodyState==="macheteFalling"} dissolve={e.bodyState==="grabMelting" ? THREE.MathUtils.clamp(e.grabTimer/1.05,0,1) : e.bodyState==="macheteMelting" ? THREE.MathUtils.clamp(e.grabTimer/0.92,0,1) : 0}/>
+      <MonsterProceduralCharacter kind={e.kind} headless={e.headless} missingArm={e.severedArm} animation={e.animation} fallen={e.bodyState==="fallen"||e.bodyState==="grabFallen"||e.bodyState==="macheteFalling"} dissolve={e.bodyState==="grabMelting" ? THREE.MathUtils.clamp(e.grabTimer/1.05,0,1) : e.bodyState==="macheteMelting" ? THREE.MathUtils.clamp(e.grabTimer/0.92,0,1) : 0} attackPulse={e.knocked>0?THREE.MathUtils.clamp(e.knocked/0.65,0,1):e.bodyState==="grabLift"||e.bodyState==="grabThrown"||e.bodyState==="wallFlying"?1:0}/>
       {e.bodyState==="wallStuck"&&<mesh position={[0,0.95,-0.25]}><circleGeometry args={[1.05,16]}/><meshStandardMaterial color="#4a0911" roughness={0.35}/></mesh>}
     </group>)}
 
