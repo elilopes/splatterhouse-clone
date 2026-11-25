@@ -123,7 +123,7 @@ function joinIndexedGeometriesWithBones(
 }
 
 function build(kind: ProceduralMonsterKind): Built {
-  const brute = kind === "brute";
+  const brute = kind === "brute";\n  const crawler = kind === "crawler";
   const color = brute ? "#7d6048" : kind === "spitter" ? "#a05c43" : "#873b36";
 
   const bones: THREE.Bone[] = [];
@@ -149,12 +149,12 @@ function build(kind: ProceduralMonsterKind): Built {
 
   for (const s of [-1, 1] as const) {
     const side = s < 0 ? "left" : "right";
-    const sh = add(`${side}Shoulder`, chest, new THREE.Vector3(s * (brute ? 0.57 : 0.43), 0.1, 0));
+    const sh = add(`${side}Shoulder`, chest, new THREE.Vector3(s * (brute ? 0.68 : crawler ? 0.32 : 0.43), 0.1, 0));
     const upper = add(`${side}UpperArm`, sh, new THREE.Vector3(s * 0.1, -0.25, 0));
     const fore = add(`${side}Forearm`, upper, new THREE.Vector3(s * 0.08, -0.42, 0.04));
     add(`${side}Hand`, fore, new THREE.Vector3(s * 0.06, -0.3, 0.05));
 
-    const hip = add(`${side}Hip`, pelvis, new THREE.Vector3(s * (brute ? 0.34 : 0.26), -0.02, 0));
+    const hip = add(`${side}Hip`, pelvis, new THREE.Vector3(s * (brute ? 0.42 : crawler ? 0.19 : 0.26), -0.02, 0));
     const knee = add(`${side}Knee`, hip, new THREE.Vector3(s * 0.03, -0.42, 0));
     add(`${side}Foot`, knee, new THREE.Vector3(0, -0.42, 0.12));
   }
@@ -162,16 +162,16 @@ function build(kind: ProceduralMonsterKind): Built {
   root.updateMatrixWorld(true);
 
   const specs: PartSpec[] = [
-    [0, 0.95, 0, brute ? 0.72 : 0.54, brute ? 0.7 : 0.62, 0.42, 1, "spine"],
-    [0, 0.48, 0, 0.45, 0.3, 0.36, 2, "pelvis"],
-    [0, 1.55, 0.02, 0.38, 0.32, 0.34, 3, "neck"],
-    [0, 1.85, 0.04, 0.43, 0.48, 0.38, 4, "head"],
+    [0, 0.95, 0, brute ? 0.78 : crawler ? 0.38 : 0.54, brute ? 0.78 : crawler ? 0.52 : 0.62, brute ? 0.48 : crawler ? 0.28 : 0.42, 1, "spine"],
+    [0, 0.48, 0, brute ? 0.56 : crawler ? 0.32 : 0.45, brute ? 0.42 : crawler ? 0.24 : 0.3, brute ? 0.42 : crawler ? 0.28 : 0.36, 2, "pelvis"],
+    [0, 1.55, 0.02, brute ? 0.48 : crawler ? 0.27 : 0.38, brute ? 0.4 : crawler ? 0.26 : 0.32, brute ? 0.42 : crawler ? 0.27 : 0.34, 3, "neck"],
+    [0, 1.85, 0.04, brute ? 0.5 : crawler ? 0.31 : 0.43, brute ? 0.48 : crawler ? 0.34 : 0.48, brute ? 0.44 : crawler ? 0.3 : 0.38, 4, "head"],
     ...([-1, 1] as const).flatMap((s): PartSpec[] => {
       const side = s < 0 ? "left" : "right";
       return [
-        [s * 0.43, 1.48, 0, 0.3, 0.32, 0.34, 5, `${side}Shoulder`],
-        [s * 0.57, 1.05, 0.04, 0.18, 0.42, 0.22, 6, `${side}UpperArm`],
-        [s * 0.65, 0.62, 0.05, 0.15, 0.36, 0.19, 7, `${side}Forearm`],
+        [s * (brute ? 0.52 : crawler ? 0.3 : 0.43), 1.48, 0, brute ? 0.43 : crawler ? 0.19 : 0.3, brute ? 0.42 : crawler ? 0.22 : 0.32, brute ? 0.43 : crawler ? 0.22 : 0.34, 5, `${side}Shoulder`],
+        [s * (brute ? 0.69 : crawler ? 0.39 : 0.57), 1.05, 0.04, brute ? 0.24 : crawler ? 0.11 : 0.18, brute ? 0.46 : crawler ? 0.32 : 0.42, brute ? 0.28 : crawler ? 0.13 : 0.22, 6, `${side}UpperArm`],
+        [s * (brute ? 0.8 : crawler ? 0.45 : 0.65), 0.62, 0.05, brute ? 0.21 : crawler ? 0.09 : 0.15, brute ? 0.4 : crawler ? 0.27 : 0.36, brute ? 0.26 : crawler ? 0.12 : 0.19, 7, `${side}Forearm`],
         [s * 0.26, 0.25, 0, 0.17, 0.44, 0.22, 8, `${side}Hip`],
         [s * 0.29, -0.14, 0.03, 0.14, 0.4, 0.18, 9, `${side}Knee`],
         [s * 0.29, -0.45, 0.16, 0.25, 0.15, 0.38, 10, `${side}Foot`],
