@@ -1997,6 +1997,8 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
   const lastMouseRef=useRef<{x:number;y:number}|null>(null);
   const lookTouchRef=useRef<{id:number;x:number;y:number}|null>(null);
   const [tpsHud,setTpsHud]=useState<TpsHudState>({ammo:TPS_MAG_SIZE,maxAmmo:TPS_MAG_SIZE,reloading:false,ads:false,hitMarker:"none"});
+  const [energy,setEnergy]=useState(0);
+  const handleKill=()=>{setEnergy(v=>Math.min(100,v+12));onKill();};
 
   const setHDZoom=(next:number)=>{
     const clamped=Math.round(THREE.MathUtils.clamp(next,0.55,2.4)*100)/100;
@@ -2065,7 +2067,7 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
   const joystickRef=useRef<HTMLDivElement>(null);
   const joystickInput=useRef({x:0,y:0,pointerId:-1});
   const [knob,setKnob]=useState({x:0,y:0});
-  const controls=useRef<WorldControls>({horizontal:0,depth:0,attack:false,grab:false,jump:false,pickup:false});
+  const controls=useRef<WorldControls>({horizontal:0,depth:0,attack:false,grab:false,jump:false,pickup:false,slide:false,slash:false,sweep:false});
   const updateJoystick=(event:ReactPointerEvent<HTMLDivElement>)=>{const el=joystickRef.current;if(!el)return;const r=el.getBoundingClientRect();const dx=event.clientX-(r.left+r.width/2),dy=event.clientY-(r.top+r.height/2),radius=r.width*0.34,d=Math.hypot(dx,dy),scale=d>radius?radius/d:1;const x=dx*scale,y=dy*scale;joystickInput.current.x=x/radius;joystickInput.current.y=y/radius;controls.current.horizontal=x/radius;controls.current.depth=y/radius;setKnob({x,y});};
   const releaseJoystick=(event:ReactPointerEvent<HTMLDivElement>)=>{if(joystickInput.current.pointerId!==event.pointerId)return;joystickInput.current={x:0,y:0,pointerId:-1};controls.current.horizontal=0;controls.current.depth=0;setKnob({x:0,y:0});if(joystickRef.current?.hasPointerCapture(event.pointerId))joystickRef.current.releasePointerCapture(event.pointerId);};
   const setAction=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"slash"|"sweep",value:boolean)=>{controls.current[key]=value;};
@@ -2167,7 +2169,7 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
           renderer.shadowMap.type=THREE.PCFSoftShadowMap;
           return renderer;
         }}>
-        <World onScore={onScore} onKill={onKill} paused={paused} onStageChange={handleStageChange} initialStage={initialStage} onPhase3Clear={onPhase3Clear} controls={controls} useHDCharacter={useHDCharacter} zoomTargetRef={zoomTargetRef} tpsAimRef={tpsAimRef} onTpsHudUpdate={setTpsHud} onRickVisible={()=>setPhaseLoading(false)} onStageLoading={()=>setPhaseLoading(true)}/>
+        <World onScore={onScore} onKill={handleKill} paused={paused} onStageChange={handleStageChange} initialStage={initialStage} onPhase3Clear={onPhase3Clear} controls={controls} useHDCharacter={useHDCharacter} zoomTargetRef={zoomTargetRef} tpsAimRef={tpsAimRef} onTpsHudUpdate={setTpsHud} onRickVisible={()=>setPhaseLoading(false)} onStageLoading={()=>setPhaseLoading(true)}/>
       </Canvas>
     )}
     {(rendererMode===null||phaseLoading)&&(
@@ -2189,6 +2191,15 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
       <button type="button" className="hd-zoom-readout" aria-label="Redefinir zoom" onClick={()=>setHDZoom(1)}>{Math.round(zoomDisplay*100)}%</button>
       <button type="button" className="hd-zoom-btn" aria-label="Aproximar câmera" disabled={zoomDisplay>=2.39} onClick={()=>setHDZoom(zoomTargetRef.current+0.2)}>+</button>
     </div>}
+    <div className="rick-energy-hud" role="progressbar" aria-label="Energia de Rick" aria-valuemin={0} aria-valuemax={100} aria-valuenow={energy}>
+      <span className="rick-energy-label">ENERGIA</span>
+      <div className="rick-energy-track">
+        <span className="rick-energy-segment energy-green" style={{width:`${Math.min(energy,34)/34*33.333}%`}}/>
+        <span className="rick-energy-segment energy-yellow" style={{width:`${Math.max(0,Math.min(energy-34,33))/33*33.333}%`}}/>
+        <span className="rick-energy-segment energy-red" style={{width:`${Math.max(0,energy-67)/33*33.334}%`}}/>
+      </div>
+      <span className="rick-energy-value">{energy}%</span>
+    </div>
     <div className="action-buttons" aria-label="Ações de Rick">
       <button type="button" className="action-button action-punch" aria-label={isPhase3?"Atirar com escopeta":"Soco ou ataque"} onPointerDown={press("attack")} onPointerUp={release("attack")} onPointerCancel={release("attack")} onPointerLeave={release("attack")}>{isPhase3?"ATIRAR":"SOCO"}</button>
       {isPhase3 ? (
