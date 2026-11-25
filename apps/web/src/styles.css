@@ -6,7 +6,31 @@
 .graphics-settings select:focus{border-color:#d15a61;box-shadow:0 0 0 2px #d15a6133}
 .graphics-settings small{color:#938588;font-size:10px;line-height:1.5;letter-spacing:normal;text-transform:none}
 .renderer-loading{position:absolute;inset:0;display:grid;place-items:center;background:#08080b;color:#c6aeb0;font:600 13px system-ui,sans-serif;letter-spacing:.08em}
+@keyframes blinkPhaseLoading{0%,100%{opacity:1}50%{opacity:.18}}
+.phase-loading-overlay{position:absolute;inset:0;z-index:9;display:grid;place-items:center;background:rgba(8,8,11,.74);pointer-events:none}
+.phase-loading-text{color:#ff2e3a;font-size:clamp(18px,2.8vw,28px);font-weight:900;letter-spacing:.14em;text-transform:uppercase;text-shadow:0 0 14px rgba(255,46,58,.72),0 2px 8px #000;animation:blinkPhaseLoading .75s ease-in-out infinite}
 .hd-zoom-controls{position:absolute;top:14px;right:14px;display:flex;align-items:center;gap:4px;z-index:6;background:#09090bdc;border:1px solid #6b3439;padding:4px}
 .hd-zoom-btn,.hd-zoom-readout{background:#1b1316;border:1px solid #5c2a30;color:#f4e9ea;padding:5px 9px;font-size:12px;font-weight:800;line-height:1;min-width:30px;letter-spacing:.04em}
 .hd-zoom-readout{min-width:48px;font-size:11px;color:#e7a5a8}
-@media(max-width:850px){.hd-zoom-controls{top:7px;right:7px}.hd-zoom-btn,.hd-zoom-readout{padding:4px 7px;font-size:11px}}
+.game-viewport.tps-mode{cursor:crosshair}
+.tps-crosshair{position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%);pointer-events:none;z-index:5;transition:transform .1s ease-out}
+.tps-crosshair.ads{transform:translate(-50%,-50%) scale(.68)}
+.tps-crosshair .tps-dot{position:absolute;left:50%;top:50%;width:4px;height:4px;border-radius:50%;background:#f7efe8;box-shadow:0 0 4px #000;transform:translate(-50%,-50%)}
+.tps-crosshair .tps-pip{position:absolute;background:#f4ebe2dd;box-shadow:0 0 3px #000;transition:background-color .08s,transform .08s}
+.tps-crosshair .tps-top{left:50%;top:4px;width:2px;height:9px;transform:translateX(-50%)}
+.tps-crosshair .tps-bottom{left:50%;bottom:4px;width:2px;height:9px;transform:translateX(-50%)}
+.tps-crosshair .tps-left{top:50%;left:4px;width:9px;height:2px;transform:translateY(-50%)}
+.tps-crosshair .tps-right{top:50%;right:4px;width:9px;height:2px;transform:translateY(-50%)}
+.tps-crosshair.hit-body .tps-pip,.tps-crosshair.hit-body .tps-dot{background:#ffd166;box-shadow:0 0 8px #ffb703}
+.tps-crosshair.hit-head .tps-pip,.tps-crosshair.hit-head .tps-dot{background:#ff3b46;box-shadow:0 0 10px #ff1e2d}
+.tps-crosshair.hit-head{transform:translate(-50%,-50%) scale(1.18)}
+.tps-weapon-hud{position:absolute;top:14px;right:14px;z-index:5;pointer-events:none;background:#09090bdc;border:1px solid #6b3439;padding:8px 12px;min-width:118px;text-align:right}
+.tps-weapon-hud small,.tps-weapon-hud strong{display:block}
+.tps-weapon-hud small{font-size:9px;color:#e17b80;letter-spacing:.15em}
+.tps-weapon-hud strong{font-size:15px;margin-top:3px;color:#f5ece6}
+.action-button.is-active{border-color:#ffd166;background:#a92d35e6;box-shadow:0 0 14px #ffd16666}
+.victory-overlay{z-index:8;text-align:center;padding:24px}
+.victory-stats{color:#d8c4c5;font-size:13px;margin:0 0 8px}
+.victory-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+@media(max-width:850px){.hd-zoom-controls,.tps-weapon-hud{top:7px;right:7px}.tps-weapon-hud{padding:6px 8px;min-width:94px}.tps-weapon-hud strong{font-size:12px}.hd-zoom-btn,.hd-zoom-readout{padding:4px 7px;font-size:11px}}
+

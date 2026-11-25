@@ -4,12 +4,21 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import RickTaylorCharacter, { type RickMotion } from "./characters/RickTaylorCharacter";
 import { RickTaylorCharacter3DHDPlayer } from "./characters/RickTaylorCharacter3DHD";
+import { CORRIDOR_COVERS, CORRIDOR_DOORS, MansionCorridor3 } from "./MansionCorridor3";
 import { WebGPURenderer } from "three/webgpu";
 import MonsterProceduralCharacter from "./characters/MonsterProceduralCharacter";
 
 export type GraphicsQuality = "auto" | "standard" | "high";
 
-type Props = { onScore:(points:number)=>void; onKill:()=>void; paused:boolean; onStageChange:(stage:1|2)=>void; graphicsQuality:GraphicsQuality };
+type Props = {
+  onScore:(points:number)=>void;
+  onKill:()=>void;
+  paused:boolean;
+  onStageChange:(stage:1|2|3)=>void;
+  graphicsQuality:GraphicsQuality;
+  initialStage?:1|2|3;
+  onPhase3Clear?:()=>void;
+};
 type WeaponId = "pipe" | "machete" | "shotgun";
 type EnemyKind = "crawler" | "brute" | "spitter";
 type BodyState = "alive" | "wallFlying" | "wallStuck" | "falling" | "fallen" | "macheteFalling" | "macheteMelting" | "grabLift" | "grabThrown" | "grabFallen" | "grabMelting" | "pipeSlam" | "gone";
@@ -27,8 +36,14 @@ type SeveredHead = {
 type BloodPool = { id:number; x:number; z:number; radius:number };
 type PickupState = { id:WeaponId; x:number; z:number; collected:boolean };
 type CombatEffect = {
-  id:number; kind:"gore"|"skull"|"arm"; x:number; y:number; z:number;
+  id:number; kind:"gore"|"skull"|"arm"|"spark"; x:number; y:number; z:number;
   vx:number; vy:number; vz:number; size:number; age:number;
+};
+type BulletTracer = {
+  id:number; x0:number; y0:number; z0:number; x1:number; y1:number; z1:number; age:number;
+};
+type TpsHudState = {
+  ammo:number; maxAmmo:number; reloading:boolean; ads:boolean; hitMarker:"none"|"body"|"head";
 };
 
 const makeEnemy = (id:number, x:number, z:number, kind:EnemyKind, animation:number, activated=false): EnemyState => ({
@@ -65,10 +80,20 @@ const initialPickups: PickupState[] = [
 type WorldControls = {
   horizontal:number; depth:number; attack:boolean; grab:boolean; jump:boolean; pickup:boolean;
 };
-type WorldProps = Omit<Props, "graphicsQuality"> & { controls:React.MutableRefObject<WorldControls>; useHDCharacter:boolean; zoomTargetRef:React.MutableRefObject<number> };
+type TpsAimInput = { yawDelta:number; pitchDelta:number; ads:boolean; reload:boolean };
+type WorldProps = Omit<Props, "graphicsQuality"> & {
+  controls:React.MutableRefObject<WorldControls>;
+  useHDCharacter:boolean;
+  zoomTargetRef:React.MutableRefObject<number>;
+  tpsAimRef:React.MutableRefObject<TpsAimInput>;
+  onTpsHudUpdate:(hud:TpsHudState)=>void;
+  onRickVisible:()=>void;
+  onStageLoading:()=>void;
+};
 type PipeAttackStyle = "bat" | "overhead";
 type PipeCombo = { steps:PipeAttackStyle[]; elapsed:number; stepIndex:number; hit:boolean };
 const PIPE_STRIKE_DURATION = 0.72;
+const TPS_MAG_SIZE = 8;
 
 function FleshyWall() {
   const lobes = useMemo(()=>Array.from({length:114},(_,i)=>({
@@ -305,7 +330,14 @@ function MansionRoom({player}:{player:React.RefObject<THREE.Group|null>}) {
     <mesh position={[0,3.29,-9.65]} castShadow receiveShadow>
       <boxGeometry args={[24.4,0.42,16.0]}/><meshStandardMaterial color="#49382e" roughness={0.88}/>
     </mesh>
-    {/* Framed painting and antique clock mounted on the rear wall, visible from the upper deck. */}
+    {/* Framed painting, antique clock, and glowing Upper Corridor Doorway (Phase 3 entry) */}
+    <group position={[0,3.5,-17.52]}>
+      <mesh position={[0,1.75,0]}><boxGeometry args={[3.35,3.5,0.28]}/><meshStandardMaterial color="#170f0c" roughness={0.85}/></mesh>
+      <mesh position={[0,1.65,0.06]}><boxGeometry args={[2.55,3.15,0.16]}/><meshStandardMaterial color="#8f2912" emissive="#6d1c0a" emissiveIntensity={1.1}/></mesh>
+      <mesh position={[-1.08,1.6,0.18]} rotation={[0,0.42,0]}><boxGeometry args={[0.92,3.1,0.12]}/><meshStandardMaterial color="#2b1612" roughness={0.8}/></mesh>
+      <mesh position={[1.08,1.6,0.18]} rotation={[0,-0.42,0]}><boxGeometry args={[0.92,3.1,0.12]}/><meshStandardMaterial color="#2b1612" roughness={0.8}/></mesh>
+      <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.03,0.85]}><ringGeometry args={[0.55,0.72,24]}/><meshBasicMaterial color="#c95b2b"/></mesh>
+    </group>
     <group position={[-4.2,6.9,-17.48]}>
       <mesh castShadow><boxGeometry args={[2.45,1.9,0.18]}/><meshStandardMaterial color="#74502f" metalness={0.18} roughness={0.55}/></mesh>
       <mesh position={[0,0,0.105]}><boxGeometry args={[2.16,1.61,0.035]}/><meshStandardMaterial color="#211512" roughness={0.95}/></mesh>
@@ -394,16 +426,20 @@ function WeaponModel({ id }: {id:WeaponId}) {
   </group>;
 }
 
-function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoomTargetRef}:WorldProps) {
-  const { camera, size } = useThree();
+function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear,controls,useHDCharacter,zoomTargetRef,tpsAimRef,onTpsHudUpdate,onRickVisible,onStageLoading}:WorldProps) {
+  const { camera, set, size } = useThree();
+  const orthoCamRef=useRef<THREE.OrthographicCamera|null>(null);
+  const perspCamRef=useMemo(()=>new THREE.PerspectiveCamera(56,16/9,0.1,140),[]);
   const player=useRef<THREE.Group>(null);
   const hdZoomCurrent=useRef(1);
   const enemyGroups=useRef<Record<number, THREE.Group|null>>({});
   const headGroups=useRef<Record<number, THREE.Group|null>>({});
   const effectGroups=useRef<Record<number, THREE.Group|null>>({});
+  const tracerGroups=useRef<Record<number, THREE.Mesh|null>>({});
   const severedHeads=useRef<SeveredHead[]>([]);
   const bloodPools=useRef<BloodPool[]>([]);
   const effects=useRef<CombatEffect[]>([]);
+  const tracers=useRef<BulletTracer[]>([]);
   const spitProjectiles=useRef<SpitProjectile[]>([]);
   const spitSplashes=useRef<SpitSplash[]>([]);
   const spitGroups=useRef<Record<number,THREE.Group|null>>({});
@@ -412,13 +448,20 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
   const nextEffectId=useRef(1);
   const nextEnemyId=useRef(100);
   const triggeredWaves=useRef(new Set<number>());
-  const enemies=useRef<EnemyState[]>(initialEnemies.map(e=>({...e})));
+  const triggeredCorridorWaves=useRef(new Set<number>());
+  const openedCorridorDoors=useRef(new Set<number>());
+  const phase3ClearedSent=useRef(false);
+  const phase3SpawnDelay=useRef(2.2);
+  const phase3InitialWaveSpawned=useRef(false);
+  const rickVisibleSent=useRef(false);
+  const rickReadyFrames=useRef(0);
+  const enemies=useRef<EnemyState[]>(initialStage===1?initialEnemies.map(e=>({...e})):[]);
   const pickups=useRef<PickupState[]>(initialPickups.map(p=>({...p})));
   const motion=useRef<RickMotion>({moving:false,attackTime:0,attackStyle:null,attackProgress:0,grabTime:0,jumpHeight:0,weapon:null});
   const pipeCombo=useRef<PipeCombo|null>(null);
   const pendingShotgun=useRef<{timer:number;targetId:number|null}|null>(null);
   const macheteAttackVariant=useRef<"head"|"arm">("head");
-  const [phase,setPhase]=useState<1|2>(1);
+  const [phase,setPhase]=useState<1|2|3>(initialStage);
   const [initialEnemiesVisible,setInitialEnemiesVisible]=useState(false);
   const [equipped,setEquipped]=useState<WeaponId|null>(null);
   const facing=useRef(1);
@@ -429,19 +472,134 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
   const lastActions=useRef({attack:false,grab:false,jump:false,pickup:false});
   const keys=useRef(new Set<string>());
 
+  // Phase 3 Uncharted TPS states
+  const tpsYaw=useRef(0);
+  const tpsPitch=useRef(-0.02);
+  const tpsRecoil=useRef(0);
+  const tpsAmmo=useRef(TPS_MAG_SIZE);
+  const tpsReloadTimer=useRef(0);
+  const hitMarkerTimer=useRef(0);
+  const hitMarkerKind=useRef<"none"|"body"|"head">("none");
+  const lastTpsHud=useRef<TpsHudState>({ammo:TPS_MAG_SIZE,maxAmmo:TPS_MAG_SIZE,reloading:false,ads:false,hitMarker:"none"});
+
+  useEffect(()=>{
+    if((camera as THREE.OrthographicCamera).isOrthographicCamera){
+      orthoCamRef.current=camera as THREE.OrthographicCamera;
+    }
+  },[camera]);
+
+  const enterPhase2=(resetCameraImmediate=false)=>{
+    if(!player.current)return;
+    rickVisibleSent.current=false;
+    rickReadyFrames.current=0;
+    onStageLoading();
+    setPhase(2);onStageChange(2);
+    player.current.position.set(0,0,9);
+    player.current.rotation.set(0,0,0);
+    player.current.visible=true;
+    attackDirection.current={x:0,z:-1};
+    upperDeckAccess.current=false;
+    pendingShotgun.current=null;
+    pipeCombo.current=null;
+    spitHitCooldown.current=0;
+    jumpVelocity.current=0;
+    grounded.current=true;
+    motion.current.jumpHeight=0;
+    spitProjectiles.current=[];
+    spitSplashes.current=[];
+    effects.current=[];
+    tracers.current=[];
+    enemies.current=[];
+    const hallWave=[
+      [-13.2,-12.8,"crawler"],[13.0,-12.2,"spitter"],[-14.0,5.0,"brute"],
+      [14.0,8.0,"crawler"],[-5.5,15.0,"spitter"],[7.0,15.2,"brute"]
+    ] as const;
+    hallWave.forEach((spawn,idx)=>enemies.current.push(makeEnemy(nextEnemyId.current++,spawn[0],spawn[1],spawn[2],idx*1.4,true)));
+    severedHeads.current=[];
+    bloodPools.current=[];
+    if(resetCameraImmediate&&orthoCamRef.current){
+      orthoCamRef.current.position.set(0,8.4,15.8);
+      orthoCamRef.current.lookAt(0,1.7,6.4);
+    }
+    setEnemyVersion(v=>v+1);
+  };
+
+  const enterPhase3=()=>{
+    if(!player.current)return;
+    rickVisibleSent.current=false;
+    rickReadyFrames.current=0;
+    onStageLoading();
+    setPhase(3);onStageChange(3);
+    phase3ClearedSent.current=false;
+    phase3SpawnDelay.current=2.2;
+    phase3InitialWaveSpawned.current=false;
+    player.current.position.set(0,0,26.0);
+    player.current.rotation.set(0,0,0);
+    player.current.visible=true;
+    tpsYaw.current=0;
+    tpsPitch.current=-0.02;
+    tpsRecoil.current=0;
+    tpsAmmo.current=TPS_MAG_SIZE;
+    tpsReloadTimer.current=0;
+    hitMarkerTimer.current=0;
+    hitMarkerKind.current="none";
+    attackDirection.current={x:0,z:-1};
+    upperDeckAccess.current=false;
+    pendingShotgun.current=null;
+    pipeCombo.current=null;
+    spitHitCooldown.current=0;
+    jumpVelocity.current=0;
+    grounded.current=true;
+    motion.current.jumpHeight=0;
+    motion.current.weapon="shotgun";
+    setEquipped("shotgun");
+    spitProjectiles.current=[];
+    spitSplashes.current=[];
+    effects.current=[];
+    tracers.current=[];
+    severedHeads.current=[];
+    bloodPools.current=[];
+    openedCorridorDoors.current.clear();
+    triggeredCorridorWaves.current.clear();
+    enemies.current=[];
+    perspCamRef.position.set(0.72,1.88,29.1);
+    perspCamRef.lookAt(0.35,1.45,10.0);
+    setEnemyVersion(v=>v+1);
+  };
+
   useEffect(()=>{
     const spawnTimer=window.setTimeout(()=>setInitialEnemiesVisible(true),2000);
     return ()=>window.clearTimeout(spawnTimer);
   },[]);
 
   useEffect(()=>{
+    if(phase===3){
+      set({camera:perspCamRef});
+    }else if(orthoCamRef.current&&camera!==orthoCamRef.current){
+      set({camera:orthoCamRef.current});
+    }
+  },[phase,perspCamRef,camera,set]);
+
+  useEffect(()=>{
+    rickVisibleSent.current=false;
+    rickReadyFrames.current=0;
+    onStageLoading();
+    if(initialStage===3){
+      enterPhase3();
+      return;
+    }
+    if(initialStage===2){
+      enterPhase2(true);
+      return;
+    }
     camera.position.set(-24,4.6,18);
     camera.lookAt(-24,3.2,0);
     if(player.current){
       player.current.position.set(-24,0,0);
       player.current.rotation.y=-Math.PI/2;
     }
-  },[camera]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[initialStage]);
 
   const targetWallZ = (x:number) => {
     if(phase===2)return -2.18; // interior back wall
@@ -478,6 +636,143 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
       });
     }
     setEnemyVersion(v=>v+1);
+  };
+
+  const spawnSparks=(x:number,y:number,z:number,nx=0,nz=0)=>{
+    for(let i=0;i<7;i++){
+      effects.current.push({
+        id:nextEffectId.current++,kind:"spark",x,y,z,
+        vx:nx*2.5+(Math.random()-0.5)*3.2,vy:1.0+Math.random()*2.8,vz:nz*2.5+(Math.random()-0.5)*3.2,
+        size:0.55+Math.random()*0.55,age:0
+      });
+    }
+    setEnemyVersion(v=>v+1);
+  };
+
+  const firePhase3Shotgun=()=>{
+    if(!player.current||tpsReloadTimer.current>0)return;
+    if(tpsAmmo.current<=0){
+      tpsReloadTimer.current=1.05;
+      return;
+    }
+    tpsAmmo.current-=1;
+    if(tpsAmmo.current<=0)tpsReloadTimer.current=1.05;
+
+    attackCooldown.current=0.38;
+    motion.current.attackTime=0.36;
+    motion.current.attackStyle=null;
+    motion.current.attackProgress=0;
+    tpsRecoil.current=0.14;
+    tpsPitch.current=THREE.MathUtils.clamp(tpsPitch.current+0.022,-0.45,0.42);
+
+    const rayOrigin=perspCamRef.position.clone();
+    const rayDir=new THREE.Vector3();
+    perspCamRef.getWorldDirection(rayDir).normalize();
+
+    const px=player.current.position.x, pz=player.current.position.z, py=player.current.position.y;
+    const fwdX=-Math.sin(tpsYaw.current), fwdZ=-Math.cos(tpsYaw.current);
+    const rightX=Math.cos(tpsYaw.current), rightZ=-Math.sin(tpsYaw.current);
+    const muzzleX=px+fwdX*0.82+rightX*0.28;
+    const muzzleY=py+1.34+Math.sin(tpsPitch.current)*0.4;
+    const muzzleZ=pz+fwdZ*0.82+rightZ*0.28;
+
+    const rayHitSphere=(cx:number,cy:number,cz:number,radius:number)=>{
+      const ocX=rayOrigin.x-cx, ocY=rayOrigin.y-cy, ocZ=rayOrigin.z-cz;
+      const b=ocX*rayDir.x+ocY*rayDir.y+ocZ*rayDir.z;
+      const c=ocX*ocX+ocY*ocY+ocZ*ocZ-radius*radius;
+      const disc=b*b-c;
+      if(disc<0)return null;
+      const tHit=-b-Math.sqrt(disc);
+      return tHit>0.8?tHit:null;
+    };
+
+    let bestDist=44;
+    let bestEnemy:EnemyState|null=null;
+    let isHeadshot=false;
+
+    // Wall / floor / ceiling clip distance
+    if(Math.abs(rayDir.x)>1e-4){
+      const tWall=((rayDir.x>0?3.25:-3.25)-rayOrigin.x)/rayDir.x;
+      if(tWall>0.5&&tWall<bestDist)bestDist=tWall;
+    }
+    if(Math.abs(rayDir.z)>1e-4){
+      const tEnd=((rayDir.z>0?30.1:-38.9)-rayOrigin.z)/rayDir.z;
+      if(tEnd>0.5&&tEnd<bestDist)bestDist=tEnd;
+    }
+    if(Math.abs(rayDir.y)>1e-4){
+      const tPlane=((rayDir.y>0?4.55:0.04)-rayOrigin.y)/rayDir.y;
+      if(tPlane>0.5&&tPlane<bestDist)bestDist=tPlane;
+    }
+
+    const adsBonus=tpsAimRef.current.ads?0.06:0.1;
+    for(const e of enemies.current){
+      if(!e.alive)continue;
+      const headY=e.y+(e.kind==="crawler"?1.05:1.65);
+      const torsoY=e.y+(e.kind==="crawler"?0.62:0.96);
+      const tHead=rayHitSphere(e.x,headY,e.z,(e.kind==="brute"?0.48:0.41)+adsBonus*0.5);
+      if(tHead!==null&&tHead<bestDist){
+        bestDist=tHead;
+        bestEnemy=e;
+        isHeadshot=true;
+      }
+      const tTorso=rayHitSphere(e.x,torsoY,e.z,(e.kind==="brute"?0.64:0.54)+adsBonus);
+      if(tTorso!==null&&tTorso<bestDist){
+        bestDist=tTorso;
+        bestEnemy=e;
+        isHeadshot=false;
+      }
+    }
+
+    const hitX=rayOrigin.x+rayDir.x*bestDist;
+    const hitY=rayOrigin.y+rayDir.y*bestDist;
+    const hitZ=rayOrigin.z+rayDir.z*bestDist;
+
+    tracers.current.push({
+      id:nextEffectId.current++,
+      x0:muzzleX,y0:muzzleY,z0:muzzleZ,
+      x1:hitX,y1:hitY,z1:hitZ,
+      age:0
+    });
+
+    if(bestEnemy){
+      const e=bestEnemy;
+      const distToRick=Math.hypot(e.x-px,e.z-pz);
+      if(isHeadshot){
+        e.alive=false;
+        e.headless=true;
+        e.bodyState="falling";
+        e.knocked=0.65;
+        e.fall=rayDir.x||rayDir.z||1;
+        e.vx=rayDir.x*4.2;
+        e.vz=rayDir.z*4.2;
+        spawnGore(e.x,e.kind==="crawler"?1.05:1.65,e.z,26,6.2,10);
+        addBloodPool(e.x,e.z,1.15);
+        onKill();
+        onScore(150);
+        hitMarkerKind.current="head";
+        hitMarkerTimer.current=0.24;
+      }else{
+        const dmg=distToRick<5.5?2:1;
+        e.health-=dmg;
+        e.vx=rayDir.x*3.4;
+        e.vz=rayDir.z*3.4;
+        e.fall=rayDir.x||rayDir.z||1;
+        spawnGore(hitX,hitY,hitZ,e.health<=0?20:11,4.6,0);
+        hitMarkerKind.current="body";
+        hitMarkerTimer.current=0.18;
+        if(e.health<=0){
+          e.alive=false;
+          e.bodyState="falling";
+          e.knocked=0.65;
+          addBloodPool(e.x,e.z,1.0);
+          onKill();
+          onScore(100);
+        }
+      }
+      setEnemyVersion(v=>v+1);
+    }else{
+      spawnSparks(hitX,hitY,hitZ,-rayDir.x,-rayDir.z);
+    }
   };
 
   const addBloodPool=(x:number,z:number,radius=0.85)=>{
@@ -600,6 +895,10 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
 
   const doAttack=()=>{
     if(attackCooldown.current>0)return;
+    if(phase===3){
+      firePhase3Shotgun();
+      return;
+    }
     const px=player.current?.position.x??0;
     if(equipped==="pipe"){
       // Every press starts exactly one randomized strike. Further strikes in the
@@ -732,12 +1031,25 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
   const doJump=()=>{if(!grounded.current)return;grounded.current=false;jumpVelocity.current=6.2;};
 
   useEffect(()=>{
-    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();keys.current.add(k);if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="k")doGrab();if(k===" "||k==="l")doJump();if(k==="e")doPickup();};
+    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();keys.current.add(k);if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="k"&&phase!==3)doGrab();if(k===" "||k==="l")doJump();if(k==="e"&&phase===1)doPickup();if(k==="r"&&phase===3&&tpsReloadTimer.current<=0&&tpsAmmo.current<TPS_MAG_SIZE){tpsReloadTimer.current=1.05;}};
     const up=(e:KeyboardEvent)=>keys.current.delete(e.key.toLowerCase());
     window.addEventListener("keydown",down);window.addEventListener("keyup",up);return()=>{window.removeEventListener("keydown",down);window.removeEventListener("keyup",up);};
   });
 
   useFrame((_,dt)=>{
+    if(!rickVisibleSent.current&&player.current&&player.current.visible&&(phase!==3||camera===perspCamRef)){
+      let hasMesh=false;
+      player.current.traverse(obj=>{
+        if((obj as THREE.Mesh).isMesh)hasMesh=true;
+      });
+      if(hasMesh){
+        rickReadyFrames.current+=1;
+        if(rickReadyFrames.current>=3){
+          rickVisibleSent.current=true;
+          onRickVisible();
+        }
+      }
+    }
     if(paused||!player.current)return;
     motion.current.weapon=equipped;
     const c=controls.current;const prior=lastActions.current;
@@ -746,69 +1058,112 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
     lastActions.current={attack:attackHeld,grab:c.grab,jump:c.jump,pickup:c.pickup};
     attackCooldown.current=Math.max(0,attackCooldown.current-dt);grabCooldown.current=Math.max(0,grabCooldown.current-dt);
     spitHitCooldown.current=Math.max(0,spitHitCooldown.current-dt);
-    const keyH=Number(keys.current.has("d")||keys.current.has("arrowright"))-Number(keys.current.has("a")||keys.current.has("arrowleft"));
+    if(phase===3){
+      if(tpsAimRef.current.reload&&tpsReloadTimer.current<=0&&tpsAmmo.current<TPS_MAG_SIZE){
+        tpsReloadTimer.current=1.05;
+      }
+      tpsAimRef.current.reload=false;
+      if(tpsReloadTimer.current>0){
+        tpsReloadTimer.current=Math.max(0,tpsReloadTimer.current-dt);
+        if(tpsReloadTimer.current<=0)tpsAmmo.current=TPS_MAG_SIZE;
+      }
+      if(hitMarkerTimer.current>0){
+        hitMarkerTimer.current=Math.max(0,hitMarkerTimer.current-dt);
+        if(hitMarkerTimer.current<=0)hitMarkerKind.current="none";
+      }
+      tpsRecoil.current=THREE.MathUtils.damp(tpsRecoil.current,0,14,dt);
+
+      const arrowYaw=(Number(keys.current.has("arrowleft"))-Number(keys.current.has("arrowright")))*1.85*dt;
+      tpsYaw.current+=tpsAimRef.current.yawDelta+arrowYaw;
+      tpsPitch.current=THREE.MathUtils.clamp(tpsPitch.current+tpsAimRef.current.pitchDelta,-0.45,0.42);
+      tpsAimRef.current.yawDelta=0;
+      tpsAimRef.current.pitchDelta=0;
+      motion.current.shotgunAimPitch=tpsPitch.current;
+      motion.current.shotgunAimYaw=0;
+    }
+
+    const keyH=phase===3
+      ? Number(keys.current.has("d"))-Number(keys.current.has("a"))
+      : Number(keys.current.has("d")||keys.current.has("arrowright"))-Number(keys.current.has("a")||keys.current.has("arrowleft"));
     const keyD=Number(keys.current.has("s")||keys.current.has("arrowdown"))-Number(keys.current.has("w")||keys.current.has("arrowup"));
     const dx=THREE.MathUtils.clamp(c.horizontal+keyH,-1,1),dz=THREE.MathUtils.clamp(c.depth+keyD,-1,1);
     const moving=Math.abs(dx)+Math.abs(dz)>0.08;motion.current.moving=moving;
     if(moving){
       const v=new THREE.Vector3(dx,0,dz).normalize();
-      const stepX=v.x*4.25*dt;
-      const depthSpeed=phase===2?4.25:2.1;
-      const stepZ=v.z*depthSpeed*dt;
-      if(phase===1){
-        player.current.position.x+=stepX;
-        player.current.position.z=THREE.MathUtils.clamp(player.current.position.z+stepZ,-1.35,1.35);
+      if(phase===3){
+        const fwdX=-Math.sin(tpsYaw.current), fwdZ=-Math.cos(tpsYaw.current);
+        const rightX=Math.cos(tpsYaw.current), rightZ=-Math.sin(tpsYaw.current);
+        const moveFwd=-v.z;
+        const moveRight=v.x;
+        const speed=tpsAimRef.current.ads?2.75:4.45;
+        const stepX=(fwdX*moveFwd+rightX*moveRight)*speed*dt;
+        const stepZ=(fwdZ*moveFwd+rightZ*moveRight)*speed*dt;
+        const px=player.current.position.x, pz=player.current.position.z;
+        const nextX=THREE.MathUtils.clamp(px+stepX,-2.76,2.76);
+        const nextZ=THREE.MathUtils.clamp(pz+stepZ,-38.2,29.1);
+        const blockedByCover=(x:number,z:number)=>CORRIDOR_COVERS.some(cov=>Math.abs(x-cov.x)<cov.halfW+0.36&&Math.abs(z-cov.z)<cov.halfD+0.36);
+        if(!blockedByCover(nextX,pz))player.current.position.x=nextX;
+        const rx=player.current.position.x;
+        if(!blockedByCover(rx,nextZ))player.current.position.z=nextZ;
       }else{
-        const px=player.current.position.x,pz=player.current.position.z,py=player.current.position.y;
-        const nextX=THREE.MathUtils.clamp(px+stepX,-15.1,15.1);
-        const nextZ=THREE.MathUtils.clamp(pz+stepZ,-17.25,28.4);
-        const onDeckNow=upperDeckAccess.current&&py>=2.5&&Math.abs(px)<=12.0&&pz>=-17.25&&pz<=-1.65;
-        const inStairCorridor=Math.abs(px)<=2.95&&pz>=-2.45&&pz<=5.55;
-        const onStairNow=upperDeckAccess.current&&inStairCorridor;
-        const entersStairFromFront=pz>=4.4&&Math.abs(px)<=2.95&&Math.abs(nextX)<=2.82&&nextZ<=5.6&&nextZ>=4.0;
-        if(entersStairFromFront)upperDeckAccess.current=true;
-        const canUseStairFootprint=onDeckNow||onStairNow||entersStairFromFront;
-        // Ground-level access to the stair footprint is allowed cleanly from its front;
-        // elevated players stay within the stair rails or upper deck, and overlapping positions can always exit.
-        const inStairBlock=(x:number,z:number)=>Math.abs(x)<3.22&&z>-2.55&&z<5.42&&!canUseStairFootprint;
-        const blockedByStair=(x:number,z:number)=>{
-          if(!inStairBlock(x,z))return false;
-          if(inStairBlock(px,pz)){
-            // Never trap Rick inside the stair footprint: allow steps that move toward an exit.
-            const distNow=Math.min(3.22-Math.abs(px),5.42-pz,pz+2.55);
-            const distNext=Math.min(3.22-Math.abs(x),5.42-z,z+2.55);
-            return distNext>distNow;
+        const stepX=v.x*4.25*dt;
+        const depthSpeed=phase===2?4.25:2.1;
+        const stepZ=v.z*depthSpeed*dt;
+        if(phase===1){
+          player.current.position.x+=stepX;
+          player.current.position.z=THREE.MathUtils.clamp(player.current.position.z+stepZ,-1.35,1.35);
+        }else{
+          const px=player.current.position.x,pz=player.current.position.z,py=player.current.position.y;
+          const nextX=THREE.MathUtils.clamp(px+stepX,-15.1,15.1);
+          const nextZ=THREE.MathUtils.clamp(pz+stepZ,-17.25,28.4);
+          const onDeckNow=upperDeckAccess.current&&py>=2.5&&Math.abs(px)<=12.0&&pz>=-17.25&&pz<=-1.65;
+          const inStairCorridor=Math.abs(px)<=2.95&&pz>=-2.45&&pz<=5.55;
+          const onStairNow=upperDeckAccess.current&&inStairCorridor;
+          const entersStairFromFront=pz>=4.4&&Math.abs(px)<=2.95&&Math.abs(nextX)<=2.82&&nextZ<=5.6&&nextZ>=4.0;
+          if(entersStairFromFront)upperDeckAccess.current=true;
+          const canUseStairFootprint=onDeckNow||onStairNow||entersStairFromFront;
+          const inStairBlock=(x:number,z:number)=>Math.abs(x)<3.22&&z>-2.55&&z<5.42&&!canUseStairFootprint;
+          const blockedByStair=(x:number,z:number)=>{
+            if(!inStairBlock(x,z))return false;
+            if(inStairBlock(px,pz)){
+              const distNow=Math.min(3.22-Math.abs(px),5.42-pz,pz+2.55);
+              const distNext=Math.min(3.22-Math.abs(x),5.42-z,z+2.55);
+              return distNext>distNow;
+            }
+            return true;
+          };
+          const blockedByStairRail=(x:number,z:number)=>onStairNow&&!onDeckNow&&z<5.35&&Math.abs(x)>2.85&&Math.abs(x)>=Math.abs(px);
+          const blockedByDeckEdge=(x:number,z:number)=>onDeckNow&&(Math.abs(x)>11.9||(Math.abs(x)>2.82&&z>-1.75&&(Math.abs(x)>=Math.abs(px)||z>=pz)));
+          const blockedByFurniture=(x:number,z:number)=>{
+            const sofa=((x+10.2)/2.45)**2+((z-1.8)/1.22)**2<1;
+            const chairA=Math.hypot(x-8.4,z-4.8)<0.92;
+            const chairB=Math.hypot(x+7.8,z+7.1)<0.88;
+            return py<0.55&&(sofa||chairA||chairB);
+          };
+          const canMove=(x:number,z:number)=>!blockedByStair(x,z)&&!blockedByStairRail(x,z)&&!blockedByDeckEdge(x,z)&&!blockedByFurniture(x,z);
+          if(canMove(nextX,pz))player.current.position.x=nextX;
+          const resolvedX=player.current.position.x;
+          if(canMove(resolvedX,nextZ))player.current.position.z=nextZ;
+          if(onStairNow||entersStairFromFront)upperDeckAccess.current=true;
+          if(py<0.05&&player.current.position.z>5.6&&!onDeckNow)upperDeckAccess.current=false;
+          if((player.current.position.x>12.35||player.current.position.x<-12.35||player.current.position.z<-17.3)&&py<0.1){
+            upperDeckAccess.current=false;
           }
-          return true;
-        };
-        const blockedByStairRail=(x:number,z:number)=>onStairNow&&!onDeckNow&&z<5.35&&Math.abs(x)>2.85&&Math.abs(x)>=Math.abs(px);
-        const blockedByDeckEdge=(x:number,z:number)=>onDeckNow&&(Math.abs(x)>11.9||(Math.abs(x)>2.82&&z>-1.75&&(Math.abs(x)>=Math.abs(px)||z>=pz)));
-        const blockedByFurniture=(x:number,z:number)=>{
-          const sofa=((x+10.2)/2.45)**2+((z-1.8)/1.22)**2<1;
-          const chairA=Math.hypot(x-8.4,z-4.8)<0.92;
-          const chairB=Math.hypot(x+7.8,z+7.1)<0.88;
-          return py<0.55&&(sofa||chairA||chairB);
-        };
-        const canMove=(x:number,z:number)=>!blockedByStair(x,z)&&!blockedByStairRail(x,z)&&!blockedByDeckEdge(x,z)&&!blockedByFurniture(x,z);
-        if(canMove(nextX,pz))player.current.position.x=nextX;
-        const resolvedX=player.current.position.x;
-        if(canMove(resolvedX,nextZ))player.current.position.z=nextZ;
-        if(onStairNow||entersStairFromFront)upperDeckAccess.current=true;
-        if(py<0.05&&player.current.position.z>5.6&&!onDeckNow)upperDeckAccess.current=false;
-        if((player.current.position.x>12.35||player.current.position.x<-12.35||player.current.position.z<-17.3)&&py<0.1){
-          upperDeckAccess.current=false;
+        }
+        if(Math.abs(dx)>0.05)facing.current=dx>0?1:-1;
+        if(phase===1){
+          attackDirection.current={x:facing.current,z:0};
+          player.current.rotation.y=facing.current>0?-Math.PI/2:Math.PI/2;
+        }else{
+          attackDirection.current={x:v.x,z:v.z};
+          player.current.rotation.y=Math.atan2(-v.x,-v.z);
         }
       }
-      // Keep the horizontal combat-facing state for weapon targeting, and align
-      // the 3D character + attack ray directly with the movement direction in the free-roam hall.
-      if(Math.abs(dx)>0.05)facing.current=dx>0?1:-1;
-      if(phase===1){
-        attackDirection.current={x:facing.current,z:0};
-        player.current.rotation.y=facing.current>0?-Math.PI/2:Math.PI/2;
-      }else{
-        attackDirection.current={x:v.x,z:v.z};
-        player.current.rotation.y=Math.atan2(-v.x,-v.z);
-      }
+    }
+    if(phase===3){
+      const fwdX=-Math.sin(tpsYaw.current), fwdZ=-Math.cos(tpsYaw.current);
+      attackDirection.current={x:fwdX,z:fwdZ};
+      player.current.rotation.y=tpsYaw.current;
     }
     if(!grounded.current){motion.current.jumpHeight=Math.max(0,motion.current.jumpHeight+jumpVelocity.current*dt);jumpVelocity.current-=16.5*dt;if(motion.current.jumpHeight<=0){motion.current.jumpHeight=0;jumpVelocity.current=0;grounded.current=true;}}
     if(pipeCombo.current){
@@ -888,6 +1243,38 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
       spawnWave(4, 31.0, [{x:39.5,z:0.6,kind:"spitter"},{x:25.0,z:-0.6,kind:"crawler"}]);
       spawnWave(5, 41.0, [{x:49.5,z:-0.6,kind:"brute"},{x:36.0,z:0.65,kind:"crawler"}]);
       spawnWave(6, 51.0, [{x:58.5,z:0.6,kind:"brute"},{x:56.2,z:-0.65,kind:"spitter"},{x:60.0,z:-0.6,kind:"spitter"}]);
+    }else if(phase===3&&rickVisibleSent.current){
+      if(phase3SpawnDelay.current>0){
+        phase3SpawnDelay.current=Math.max(0,phase3SpawnDelay.current-dt);
+      }else{
+        if(!phase3InitialWaveSpawned.current){
+          phase3InitialWaveSpawned.current=true;
+          const z1=Math.max(-36,Math.min(pz-14.5,11.5));
+          const z2=Math.max(-36,Math.min(pz-19.0,7.0));
+          enemies.current.push(makeEnemy(nextEnemyId.current++,-1.15,z1,"spitter",0.4,true));
+          enemies.current.push(makeEnemy(nextEnemyId.current++,1.25,z2,"crawler",1.5,true));
+          setEnemyVersion(v=>v+1);
+        }
+        for(const door of CORRIDOR_DOORS){
+          const spawnX=door.side*3.9;
+          if(pz<=door.triggerZ&&!triggeredCorridorWaves.current.has(door.id)&&Math.hypot(spawnX-px,door.z-pz)>=4.2){
+            triggeredCorridorWaves.current.add(door.id);
+            openedCorridorDoors.current.add(door.id);
+            enemies.current.push(makeEnemy(nextEnemyId.current++,spawnX,door.z,door.spawnKind,door.id*0.8,true));
+            if(door.secondaryKind){
+              enemies.current.push(makeEnemy(nextEnemyId.current++,door.side*4.55,door.z-0.45,door.secondaryKind,door.id*1.3,true));
+            }
+            setEnemyVersion(v=>v+1);
+          }
+        }
+        if(pz<=-25.5&&!triggeredCorridorWaves.current.has(99)){
+          triggeredCorridorWaves.current.add(99);
+          enemies.current.push(makeEnemy(nextEnemyId.current++,-1.3,-34.2,"brute",0.4,true));
+          enemies.current.push(makeEnemy(nextEnemyId.current++,1.35,-34.8,"brute",1.1,true));
+          enemies.current.push(makeEnemy(nextEnemyId.current++,0,-36.0,"spitter",1.8,true));
+          setEnemyVersion(v=>v+1);
+        }
+      }
     }
 
     enemies.current.forEach((e)=>{
@@ -1106,7 +1493,23 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
           if(e.activated){
             if(Math.abs(px-e.x)>0.85)e.x+=Math.sign(px-e.x)*1.2*dt;
             e.z+=Math.sign(pz-e.z)*Math.min(Math.abs(pz-e.z),1.2*dt);
-            group.rotation.y=THREE.MathUtils.damp(group.rotation.y,px>=e.x?0.45:-0.45,6,dt);
+            group.rotation.y=THREE.MathUtils.damp(group.rotation.y,px>=e.x?0.82:-0.82,6,dt);
+          }
+        }else if(phase===3){
+          const dxPlayer=px-e.x,dzPlayer=pz-e.z;
+          const distPlayer=Math.hypot(dxPlayer,dzPlayer);
+          if(!e.activated&&distPlayer<28)e.activated=true;
+          if(e.activated){
+            // Monsters emerging from bedroom alcoves first walk out through their doorway into the corridor
+            if(Math.abs(e.x)>2.65){
+              e.x-=Math.sign(e.x)*1.95*dt;
+            }else if(distPlayer>1.55){
+              const spd=e.kind==="crawler"?2.15:e.kind==="brute"?1.45:1.65;
+              const step=Math.min(distPlayer-1.55,spd*dt);
+              e.x+=(dxPlayer/distPlayer)*step;
+              e.z+=(dzPlayer/distPlayer)*step;
+            }
+            group.rotation.y=THREE.MathUtils.damp(group.rotation.y,Math.atan2(dxPlayer,dzPlayer),6,dt);
           }
         }else{
           const dxPlayer=px-e.x,dzPlayer=pz-e.z;
@@ -1123,23 +1526,33 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
         }
         group.position.y=e.kind==="crawler"?Math.abs(Math.sin(e.animation))*0.035:Math.sin(e.animation*2)*0.025;
       }
-      // Only the spitters that guard the mansion entrance use the green projectile attack.
-      if(phase===1&&e.kind==="spitter"&&e.x>=52.5&&e.activated&&e.spitCooldown<=0){
+      // Spitters guard the mansion entrance in Phase 1 and fire down the hallway in Phase 3.
+      if(((phase===1&&e.kind==="spitter"&&e.x>=52.5)||(phase===3&&e.kind==="spitter"&&Math.abs(e.x)<2.9))&&e.activated&&e.spitCooldown<=0){
         const dx=px-e.x,dz=pz-e.z,distance=Math.hypot(dx,dz);
-        if(distance>3.2&&distance<11.5){
+        if(distance>3.2&&distance<14.5){
           const flight=0.82;
-          const startX=e.x+Math.sign(dx)*0.22,startY=1.72,startZ=e.z+0.18;
+          const startX=e.x+Math.sign(dx)*0.22,startY=1.72,startZ=e.z+Math.sign(dz)*0.22;
           spitProjectiles.current.push({
             id:nextEffectId.current++,x:startX,y:startY,z:startZ,
             vx:(px-startX)/flight,vy:(0.08-startY+4.9*flight*flight)/flight,
             vz:(pz-startZ)/flight,age:0
           });
-          e.spitCooldown=2.65;
+          e.spitCooldown=phase===3?2.95:2.65;
           setEnemyVersion(v=>v+1);
         }
       }
-      e.x=THREE.MathUtils.clamp(e.x,phase===1?-25.2:-15.5,phase===1?61.5:15.5);
-      e.z=THREE.MathUtils.clamp(e.z,phase===1?-1.35:-16.2,phase===1?1.35:25.5);
+      if(phase===3){
+        // Allow enemies inside open bedrooms (|x| up to 4.9) to step through doorways into the corridor
+        if(Math.abs(e.x)>2.85){
+          e.x=THREE.MathUtils.clamp(e.x,-4.9,4.9);
+        }else{
+          e.x=THREE.MathUtils.clamp(e.x,-2.85,2.85);
+        }
+        e.z=THREE.MathUtils.clamp(e.z,-38.0,28.5);
+      }else{
+        e.x=THREE.MathUtils.clamp(e.x,phase===1?-25.2:-15.5,phase===1?61.5:15.5);
+        e.z=THREE.MathUtils.clamp(e.z,phase===1?-1.35:-16.2,phase===1?1.35:25.5);
+      }
       group.position.x=e.x;group.position.z=e.z;
     });
 
@@ -1175,6 +1588,18 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
     effects.current=effects.current.filter(fx=>fx.age<2.8);
     if(effects.current.length!==beforeEffects)setEnemyVersion(v=>v+1);
 
+    tracers.current.forEach((tr)=>{
+      tr.age+=dt;
+      const m=tracerGroups.current[tr.id];
+      if(m){
+        const mat=m.material as THREE.MeshBasicMaterial;
+        mat.opacity=Math.max(0,1-tr.age/0.11);
+      }
+    });
+    const beforeTracers=tracers.current.length;
+    tracers.current=tracers.current.filter(tr=>tr.age<0.11);
+    if(tracers.current.length!==beforeTracers)setEnemyVersion(v=>v+1);
+
     // Integrate the green glob with gravity to create a visible mouth-to-ground arc.
     let landedSpit=false;
     spitProjectiles.current.forEach(projectile=>{
@@ -1187,8 +1612,13 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
         const hitX=player.current.position.x-projectile.x;
         const hitZ=player.current.position.z-projectile.z;
         const hitLength=Math.max(0.001,Math.hypot(hitX,hitZ));
-        player.current.position.x=THREE.MathUtils.clamp(player.current.position.x+hitX/hitLength*0.9,-25.5,63.8);
-        player.current.position.z=THREE.MathUtils.clamp(player.current.position.z+hitZ/hitLength*0.9,-1.35,1.35);
+        if(phase===3){
+          player.current.position.x=THREE.MathUtils.clamp(player.current.position.x+hitX/hitLength*0.6,-2.76,2.76);
+          player.current.position.z=THREE.MathUtils.clamp(player.current.position.z+hitZ/hitLength*0.6,-38.2,29.1);
+        }else{
+          player.current.position.x=THREE.MathUtils.clamp(player.current.position.x+hitX/hitLength*0.9,-25.5,63.8);
+          player.current.position.z=THREE.MathUtils.clamp(player.current.position.z+hitZ/hitLength*0.9,-1.35,1.35);
+        }
         spitHitCooldown.current=1.15;
         projectile.y=0.08;
       }
@@ -1218,34 +1648,11 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
     if(phase===1){
       player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-25.5,63.8);
       if(player.current.position.x>=62.5){
-        setPhase(2);onStageChange(2);player.current.position.set(0,0,9);
-        player.current.rotation.y=0;
-        attackDirection.current={x:0,z:-1};
-        upperDeckAccess.current=false;
-        pendingShotgun.current=null;
-        pipeCombo.current=null;
-        spitHitCooldown.current=0;
-        jumpVelocity.current=0;
-        grounded.current=true;
-        motion.current.jumpHeight=0;
-        spitProjectiles.current=[];
-        spitSplashes.current=[];
-        effects.current=[];
-        enemies.current.forEach(e=>{e.alive=false;e.bodyState="alive";});
-        // The hall is an arena: its first wave enters from several sides, not a single corridor.
-        const hallWave=[
-          [-13.2,-12.8,"crawler"],[13.0,-12.2,"spitter"],[-14.0,5.0,"brute"],
-          [14.0,8.0,"crawler"],[-5.5,15.0,"spitter"],[7.0,15.2,"brute"]
-        ] as const;
-        hallWave.forEach((spawn,idx)=>enemies.current.push(makeEnemy(nextEnemyId.current++,spawn[0],spawn[1],spawn[2],idx*1.4,true)));
-        severedHeads.current=[];
-        bloodPools.current=[];
-        setEnemyVersion(v=>v+1);
+        enterPhase2(false);
       }
-    }else{
+    }else if(phase===2){
       player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-15.1,15.1);
       player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-17.25,28.4);
-      // Only the front-facing staircase grants access to the upper-storey deck.
       const stairX=Math.abs(player.current.position.x);
       const stairZ=player.current.position.z;
       const onStair=upperDeckAccess.current&&stairX<=2.95&&stairZ>=-2.45&&stairZ<=5.55;
@@ -1256,6 +1663,18 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
       if(!onUpperGallery&&!onStair&&(stairZ>5.6||stairX>2.95))upperDeckAccess.current=false;
       const underUpperDeck=player.current.position.y<2.5&&stairX<=12.25&&stairZ>=-17.25&&stairZ<=-2.55;
       player.current.visible=!underUpperDeck;
+      if(onUpperGallery&&stairX<=1.85&&stairZ<=-16.3){
+        enterPhase3();
+      }
+    }else{
+      player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-2.76,2.76);
+      player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-38.2,29.1);
+      player.current.position.y=0;
+      player.current.visible=true;
+      if(!phase3ClearedSent.current&&player.current.position.z<=-37.1&&Math.abs(player.current.position.x)<=1.85){
+        phase3ClearedSent.current=true;
+        onPhase3Clear?.();
+      }
     }
 
     const targetX=player.current.position.x;
@@ -1267,7 +1686,51 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
     }else{
       hdZoomCurrent.current=1;
     }
-    if(phase===1){
+
+    if(phase===3){
+      const ads=tpsAimRef.current.ads;
+      const fwdX=-Math.sin(tpsYaw.current), fwdZ=-Math.cos(tpsYaw.current);
+      const rightX=Math.cos(tpsYaw.current), rightZ=-Math.sin(tpsYaw.current);
+      const camDist=ads?1.88:3.18;
+      const shoulderOffset=ads?0.54:0.72;
+      const camHeight=(ads?1.66:1.88)+playerHeight+motion.current.jumpHeight*0.65;
+
+      const desiredCamX=THREE.MathUtils.clamp(targetX-fwdX*camDist+rightX*shoulderOffset,-3.02,3.02);
+      const desiredCamZ=THREE.MathUtils.clamp(targetZ-fwdZ*camDist+rightZ*shoulderOffset,-38.6,29.4);
+      const desiredCamY=THREE.MathUtils.clamp(camHeight-Math.sin(tpsPitch.current)*(ads?0.55:0.9),0.72,4.15);
+
+      perspCamRef.position.x=THREE.MathUtils.damp(perspCamRef.position.x,desiredCamX,16,dt);
+      perspCamRef.position.y=THREE.MathUtils.damp(perspCamRef.position.y,desiredCamY,16,dt);
+      perspCamRef.position.z=THREE.MathUtils.damp(perspCamRef.position.z,desiredCamZ,16,dt);
+      perspCamRef.fov=THREE.MathUtils.damp(perspCamRef.fov,ads?42:56,14,dt);
+      if(size.width>0){
+        perspCamRef.aspect=size.width/Math.max(1,size.height);
+      }
+      perspCamRef.updateProjectionMatrix();
+
+      const lookX=targetX+fwdX*18+rightX*(ads?0.24:0.35);
+      const lookZ=targetZ+fwdZ*18+rightZ*(ads?0.24:0.35);
+      const lookY=(ads?1.42:1.46)+playerHeight+Math.sin(tpsPitch.current)*18+tpsRecoil.current*1.4;
+      perspCamRef.up.set(0,1,0);
+      perspCamRef.lookAt(lookX,lookY,lookZ);
+
+      const nextHud:TpsHudState={
+        ammo:tpsAmmo.current,
+        maxAmmo:TPS_MAG_SIZE,
+        reloading:tpsReloadTimer.current>0,
+        ads,
+        hitMarker:hitMarkerKind.current,
+      };
+      if(
+        nextHud.ammo!==lastTpsHud.current.ammo||
+        nextHud.reloading!==lastTpsHud.current.reloading||
+        nextHud.ads!==lastTpsHud.current.ads||
+        nextHud.hitMarker!==lastTpsHud.current.hitMarker
+      ){
+        lastTpsHud.current=nextHud;
+        onTpsHudUpdate(nextHud);
+      }
+    }else if(phase===1){
       camera.position.x=THREE.MathUtils.damp(camera.position.x,targetX,3.8,dt);
       camera.position.z=18;
       camera.position.y=4.6;
@@ -1283,20 +1746,25 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
       camera.up.set(0,1,0);
       camera.lookAt(targetX,lookY,lookZ);
     }else{
-      // Rigid follow offset prevents the room from swaying as Rick changes direction.
       camera.position.set(targetX,8.4+playerHeight,targetZ+6.8);
       camera.up.set(0,1,0);
       camera.lookAt(targetX,1.7+playerHeight,targetZ-2.6);
     }
-    if(size.width>0){const aspect=size.width/Math.max(1,size.height);const baseHalfH=phase===1?5.4:7.4;const halfH=hdPhase2ZoomActive?baseHalfH/THREE.MathUtils.clamp(hdZoomCurrent.current,0.55,2.4):baseHalfH;const ortho=camera as THREE.OrthographicCamera;ortho.zoom=1;ortho.left=-halfH*aspect;ortho.right=halfH*aspect;ortho.top=halfH;ortho.bottom=-halfH;ortho.updateProjectionMatrix();}
+    if(phase!==3&&size.width>0){const aspect=size.width/Math.max(1,size.height);const baseHalfH=phase===1?5.4:7.4;const halfH=hdPhase2ZoomActive?baseHalfH/THREE.MathUtils.clamp(hdZoomCurrent.current,0.55,2.4):baseHalfH;const ortho=camera as THREE.OrthographicCamera;ortho.zoom=1;ortho.left=-halfH*aspect;ortho.right=halfH*aspect;ortho.top=halfH;ortho.bottom=-halfH;ortho.updateProjectionMatrix();}
   });
 
   return <group>
     <color attach="background" args={["#08070a"]}/>
-    <ambientLight intensity={0.78}/>
-    <directionalLight position={[-6,12,10]} intensity={1.55} castShadow shadow-mapSize={[2048,2048]}/>
+    <ambientLight intensity={phase===3?0.78:0.78}/>
+    <directionalLight position={[-6,12,10]} intensity={phase===3?0.65:1.55} castShadow={phase!==3} shadow-mapSize={[2048,2048]}/>
     <pointLight position={[10,5,3]} intensity={0.45} color="#8d3330"/>
-    {phase===1?<Exterior/>:<MansionRoom player={player}/>}
+    {phase===3&&<>
+      <hemisphereLight args={["#f2cbb8","#241412",0.72]}/>
+      {[20,6,-8,-22,-35].map(lz=>(
+        <pointLight key={`corridor-light-${lz}`} position={[0,3.55,lz]} intensity={14} distance={18} decay={1.65} color="#ffb37e"/>
+      ))}
+    </>}
+    {phase===1?<Exterior/>:phase===2?<MansionRoom player={player}/>:<MansionCorridor3 openedDoorsRef={openedCorridorDoors}/>}
     {phase===1&&<group position={[-24,0,0]}><mesh position={[0,0.02,0]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[0.48,0.56,32]}/><meshBasicMaterial color="#7d342d"/></mesh></group>}
     <group ref={player}>{useHDCharacter
       ? <RickTaylorCharacter3DHDPlayer motion={motion.current} equippedWeapon={equipped}/>
@@ -1310,7 +1778,7 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
     ))}
 
     {enemies.current.map((e)=>(e.alive||e.bodyState!=="alive")&&(phase!==1||e.id>14||initialEnemiesVisible)&&<group key={e.id} ref={node=>{enemyGroups.current[e.id]=node;}} position={[e.x,e.y,e.z]}>
-      <MonsterProceduralCharacter kind={e.kind} headless={e.headless} missingArm={e.severedArm} animation={e.animation} fallen={e.bodyState==="fallen"||e.bodyState==="grabFallen"||e.bodyState==="macheteFalling"} dissolve={e.bodyState==="grabMelting" ? THREE.MathUtils.clamp(e.grabTimer/1.05,0,1) : e.bodyState==="macheteMelting" ? THREE.MathUtils.clamp(e.grabTimer/0.92,0,1) : 0} attackPulse={e.knocked>0?THREE.MathUtils.clamp(e.knocked/0.65,0,1):e.bodyState==="grabLift"||e.bodyState==="grabThrown"||e.bodyState==="wallFlying"?1:0}/>
+      <MonsterProceduralCharacter kind={e.kind} headless={e.headless} missingArm={e.severedArm} animation={e.animation} moving={e.alive&&(e.activated||Math.abs(e.vx)>0.08||Math.abs(e.vz)>0.08)} fallen={e.bodyState==="fallen"||e.bodyState==="grabFallen"||e.bodyState==="macheteFalling"} dissolve={e.bodyState==="grabMelting" ? THREE.MathUtils.clamp(e.grabTimer/1.05,0,1) : e.bodyState==="macheteMelting" ? THREE.MathUtils.clamp(e.grabTimer/0.92,0,1) : 0} attackPulse={e.knocked>0?THREE.MathUtils.clamp(e.knocked/0.65,0,1):e.bodyState==="grabLift"||e.bodyState==="grabThrown"||e.bodyState==="wallFlying"?1:0}/>
       {e.bodyState==="wallStuck"&&<mesh position={[0,0.95,-0.25]}><circleGeometry args={[1.05,16]}/><meshStandardMaterial color="#4a0911" roughness={0.35}/></mesh>}
     </group>)}
 
@@ -1325,8 +1793,26 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
         <mesh position={[0,0.37,0]} scale={[0.16,0.13,0.15]}><sphereGeometry args={[1,14,10]}/><meshStandardMaterial color="#64212a" roughness={0.55}/></mesh>
         <mesh position={[0,-0.18,0]} scale={[0.14,0.13,0.13]}><sphereGeometry args={[1,14,10]}/><meshStandardMaterial color="#a05c43" roughness={0.72}/></mesh>
         <mesh position={[0,-0.29,0]} rotation={[0,0,-0.12]}><capsuleGeometry args={[0.075,0.16,5,8]}/><meshStandardMaterial color="#a05c43" roughness={0.72}/></mesh>
-      </group>:<mesh scale={fx.size}><icosahedronGeometry args={[0.11,0]}/><meshStandardMaterial color="#7e0c18" roughness={0.35}/></mesh>}
+      </group>:fx.kind==="spark"?<mesh scale={fx.size*0.8}><boxGeometry args={[0.08,0.08,0.08]}/><meshBasicMaterial color="#ffcf6b"/></mesh>:<mesh scale={fx.size}><icosahedronGeometry args={[0.11,0]}/><meshStandardMaterial color="#7e0c18" roughness={0.35}/></mesh>}
     </group>)}
+
+    {tracers.current.map((tr)=>{
+      const mx=(tr.x0+tr.x1)*0.5, my=(tr.y0+tr.y1)*0.5, mz=(tr.z0+tr.z1)*0.5;
+      const len=Math.max(0.05,Math.hypot(tr.x1-tr.x0,tr.y1-tr.y0,tr.z1-tr.z0));
+      const dir=new THREE.Vector3(tr.x1-tr.x0,tr.y1-tr.y0,tr.z1-tr.z0).normalize();
+      const quat=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),dir);
+      return (
+        <mesh
+          key={`tracer-${tr.id}`}
+          ref={node=>{tracerGroups.current[tr.id]=node;}}
+          position={[mx,my,mz]}
+          quaternion={quat}
+        >
+          <cylinderGeometry args={[0.014,0.022,len,6]}/>
+          <meshBasicMaterial color="#ffe08a" transparent opacity={0.95}/>
+        </mesh>
+      );
+    })}
 
     {spitProjectiles.current.map(p=><group key={p.id} ref={node=>{spitGroups.current[p.id]=node;}} position={[p.x,p.y,p.z]}>
       <mesh scale={[0.16,0.19,0.16]} castShadow><sphereGeometry args={[1,16,12]}/><meshPhysicalMaterial color="#78d51d" emissive="#2e6508" emissiveIntensity={0.42} roughness={0.16} clearcoat={1}/></mesh>
@@ -1345,14 +1831,21 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
   </group>;
 }
 
-export default function GameView({onScore,onKill,paused,onStageChange,graphicsQuality}:Props) {
+export default function GameView({onScore,onKill,paused,onStageChange,graphicsQuality,initialStage=1,onPhase3Clear}:Props) {
   const [rendererMode,setRendererMode]=useState<"webgpu"|"webgl"|null>(null);
-  const [worldPhase,setWorldPhase]=useState<1|2>(1);
+  const [worldPhase,setWorldPhase]=useState<1|2|3>(initialStage);
+  const [phaseLoading,setPhaseLoading]=useState(true);
   const viewportRef=useRef<HTMLDivElement>(null);
   const zoomTargetRef=useRef(1);
   const [zoomDisplay,setZoomDisplay]=useState(1);
   const pinchDistRef=useRef<number|null>(null);
   const isHDPhase2=rendererMode==="webgpu"&&worldPhase===2;
+  const isPhase3=worldPhase===3;
+
+  const tpsAimRef=useRef<TpsAimInput>({yawDelta:0,pitchDelta:0,ads:false,reload:false});
+  const lastMouseRef=useRef<{x:number;y:number}|null>(null);
+  const lookTouchRef=useRef<{id:number;x:number;y:number}|null>(null);
+  const [tpsHud,setTpsHud]=useState<TpsHudState>({ammo:TPS_MAG_SIZE,maxAmmo:TPS_MAG_SIZE,reloading:false,ads:false,hitMarker:"none"});
 
   const setHDZoom=(next:number)=>{
     const clamped=Math.round(THREE.MathUtils.clamp(next,0.55,2.4)*100)/100;
@@ -1363,6 +1856,7 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
   useEffect(()=>{
     let cancelled=false;
     setRendererMode(null);
+    setPhaseLoading(true);
     const resolveRenderer=async()=>{
       if(graphicsQuality==="standard"){if(!cancelled)setRendererMode("webgl");return;}
       try{
@@ -1399,6 +1893,24 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
     };
   },[isHDPhase2]);
 
+  useEffect(()=>{
+    if(!isPhase3)return;
+    const onKeyDown=(e:KeyboardEvent)=>{
+      if(e.key==="Shift")tpsAimRef.current.ads=true;
+    };
+    const onKeyUp=(e:KeyboardEvent)=>{
+      if(e.key==="Shift")tpsAimRef.current.ads=false;
+    };
+    window.addEventListener("keydown",onKeyDown);
+    window.addEventListener("keyup",onKeyUp);
+    return ()=>{
+      window.removeEventListener("keydown",onKeyDown);
+      window.removeEventListener("keyup",onKeyUp);
+      tpsAimRef.current.ads=false;
+      lastMouseRef.current=null;
+    };
+  },[isPhase3]);
+
   const joystickRef=useRef<HTMLDivElement>(null);
   const joystickInput=useRef({x:0,y:0,pointerId:-1});
   const [knob,setKnob]=useState({x:0,y:0});
@@ -1408,12 +1920,65 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
   const setAction=(key:"attack"|"grab"|"jump"|"pickup",value:boolean)=>{controls.current[key]=value;};
   const press=(key:"attack"|"grab"|"jump"|"pickup")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,true);};
   const release=(key:"attack"|"grab"|"jump"|"pickup")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,false);};
-  const handleStageChange=(stage:1|2)=>{
+  const handleStageChange=(stage:1|2|3)=>{
     setWorldPhase(stage);
     if(stage===2)setHDZoom(1);
     onStageChange(stage);
   };
-  return <div ref={viewportRef} className="game-viewport"
+  return <div ref={viewportRef} className={`game-viewport${isPhase3?" tps-mode":""}`}
+    onContextMenu={e=>{if(isPhase3)e.preventDefault();}}
+    onPointerDown={e=>{
+      if(!isPhase3||paused)return;
+      const target=e.target as HTMLElement;
+      if(target.closest("button,.virtual-joystick"))return;
+      if(e.pointerType==="mouse"){
+        lastMouseRef.current={x:e.clientX,y:e.clientY};
+        if(e.button===2){
+          tpsAimRef.current.ads=true;
+        }else if(e.button===0){
+          controls.current.attack=true;
+        }
+      }else{
+        lookTouchRef.current={id:e.pointerId,x:e.clientX,y:e.clientY};
+      }
+    }}
+    onPointerMove={e=>{
+      if(!isPhase3||paused)return;
+      if(e.pointerType==="mouse"){
+        const sens=tpsAimRef.current.ads?0.0024:0.0038;
+        if(document.pointerLockElement===viewportRef.current){
+          tpsAimRef.current.yawDelta-=e.movementX*sens;
+          tpsAimRef.current.pitchDelta-=e.movementY*sens*0.75;
+        }else{
+          if(lastMouseRef.current){
+            const dx=e.clientX-lastMouseRef.current.x;
+            const dy=e.clientY-lastMouseRef.current.y;
+            tpsAimRef.current.yawDelta-=dx*sens;
+            tpsAimRef.current.pitchDelta-=dy*sens*0.75;
+          }
+          lastMouseRef.current={x:e.clientX,y:e.clientY};
+        }
+      }else if(lookTouchRef.current&&lookTouchRef.current.id===e.pointerId){
+        const dx=e.clientX-lookTouchRef.current.x;
+        const dy=e.clientY-lookTouchRef.current.y;
+        lookTouchRef.current={id:e.pointerId,x:e.clientX,y:e.clientY};
+        tpsAimRef.current.yawDelta-=dx*0.0052;
+        tpsAimRef.current.pitchDelta-=dy*0.0042;
+      }
+    }}
+    onPointerUp={e=>{
+      if(!isPhase3)return;
+      if(e.pointerType==="mouse"){
+        if(e.button===2)tpsAimRef.current.ads=false;
+        if(e.button===0)controls.current.attack=false;
+      }else if(lookTouchRef.current&&lookTouchRef.current.id===e.pointerId){
+        lookTouchRef.current=null;
+      }
+    }}
+    onPointerLeave={()=>{
+      lastMouseRef.current=null;
+      if(isPhase3){controls.current.attack=false;tpsAimRef.current.ads=false;}
+    }}
     onTouchStart={e=>{
       if(!isHDPhase2||e.touches.length!==2)return;
       const a=e.touches[0],b=e.touches[1];
@@ -1428,7 +1993,7 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
       setHDZoom(zoomTargetRef.current+delta*0.0045);
     }}
     onTouchEnd={e=>{if(e.touches.length<2)pinchDistRef.current=null;}}>
-    {rendererMode===null ? <div className="renderer-loading" role="status">Preparando qualidade gráfica…</div> : (
+    {rendererMode!==null && (
       <Canvas key={rendererMode} className="game-canvas" shadows dpr={[1,1.7]} orthographic camera={{position:[-24,4.6,18],zoom:1,near:0.1,far:100}}
         gl={async (defaultProps)=>{
           const canvas=defaultProps.canvas as HTMLCanvasElement;
@@ -1451,19 +2016,41 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
           renderer.shadowMap.type=THREE.PCFSoftShadowMap;
           return renderer;
         }}>
-        <World onScore={onScore} onKill={onKill} paused={paused} onStageChange={handleStageChange} controls={controls} useHDCharacter={rendererMode==="webgpu"} zoomTargetRef={zoomTargetRef}/>
+        <World onScore={onScore} onKill={onKill} paused={paused} onStageChange={handleStageChange} initialStage={initialStage} onPhase3Clear={onPhase3Clear} controls={controls} useHDCharacter={rendererMode==="webgpu"} zoomTargetRef={zoomTargetRef} tpsAimRef={tpsAimRef} onTpsHudUpdate={setTpsHud} onRickVisible={()=>setPhaseLoading(false)} onStageLoading={()=>setPhaseLoading(true)}/>
       </Canvas>
     )}
+    {(rendererMode===null||phaseLoading)&&(
+      <div className="phase-loading-overlay" role="status" aria-live="polite">
+        <span className="phase-loading-text">Carregando fase...</span>
+      </div>
+    )}
+    {isPhase3&&<>
+      <div className={`tps-crosshair${tpsHud.ads?" ads":""}${tpsHud.hitMarker!=="none"?` hit-${tpsHud.hitMarker}`:""}`} aria-hidden="true">
+        <span className="tps-pip tps-top"/><span className="tps-pip tps-bottom"/><span className="tps-pip tps-left"/><span className="tps-pip tps-right"/><span className="tps-dot"/>
+      </div>
+      <div className="tps-weapon-hud">
+        <small>ESCOPETA</small>
+        <strong>{tpsHud.reloading?"RECARREGANDO…":`${tpsHud.ammo} / ${tpsHud.maxAmmo}`}</strong>
+      </div>
+    </>}
     {isHDPhase2&&<div className="hd-zoom-controls" aria-label="Zoom da câmera HD">
       <button type="button" className="hd-zoom-btn" aria-label="Afastar câmera" disabled={zoomDisplay<=0.56} onClick={()=>setHDZoom(zoomTargetRef.current-0.2)}>−</button>
       <button type="button" className="hd-zoom-readout" aria-label="Redefinir zoom" onClick={()=>setHDZoom(1)}>{Math.round(zoomDisplay*100)}%</button>
       <button type="button" className="hd-zoom-btn" aria-label="Aproximar câmera" disabled={zoomDisplay>=2.39} onClick={()=>setHDZoom(zoomTargetRef.current+0.2)}>+</button>
     </div>}
     <div className="action-buttons" aria-label="Ações de Rick">
-      <button type="button" className="action-button action-punch" aria-label="Soco ou ataque" onPointerDown={press("attack")} onPointerUp={release("attack")} onPointerCancel={release("attack")} onPointerLeave={release("attack")}>SOCO</button>
-      <button type="button" className="action-button action-grab" aria-label="Agarrar e arremessar" onPointerDown={press("grab")} onPointerUp={release("grab")} onPointerCancel={release("grab")} onPointerLeave={release("grab")}>AGARRÃO</button>
+      <button type="button" className="action-button action-punch" aria-label={isPhase3?"Atirar com escopeta":"Soco ou ataque"} onPointerDown={press("attack")} onPointerUp={release("attack")} onPointerCancel={release("attack")} onPointerLeave={release("attack")}>{isPhase3?"ATIRAR":"SOCO"}</button>
+      {isPhase3 ? (
+        <button type="button" className={`action-button action-grab${tpsHud.ads?" is-active":""}`} aria-label="Mirar sobre o ombro" onPointerDown={e=>{e.preventDefault();tpsAimRef.current.ads=true;}} onPointerUp={e=>{e.preventDefault();tpsAimRef.current.ads=false;}} onPointerCancel={()=>{tpsAimRef.current.ads=false;}} onPointerLeave={()=>{tpsAimRef.current.ads=false;}}>MIRAR</button>
+      ) : (
+        <button type="button" className="action-button action-grab" aria-label="Agarrar e arremessar" onPointerDown={press("grab")} onPointerUp={release("grab")} onPointerCancel={release("grab")} onPointerLeave={release("grab")}>AGARRÃO</button>
+      )}
       <button type="button" className="action-button action-jump" aria-label="Pular" onPointerDown={press("jump")} onPointerUp={release("jump")} onPointerCancel={release("jump")} onPointerLeave={release("jump")}>PULO</button>
-      <button type="button" className="action-button action-pickup" aria-label="Pegar próxima arma" onPointerDown={press("pickup")} onPointerUp={release("pickup")} onPointerCancel={release("pickup")} onPointerLeave={release("pickup")}>PEGAR</button>
+      {isPhase3 ? (
+        <button type="button" className="action-button action-pickup" aria-label="Recarregar escopeta" onPointerDown={e=>{e.preventDefault();tpsAimRef.current.reload=true;}}>RECAR.</button>
+      ) : (
+        <button type="button" className="action-button action-pickup" aria-label="Pegar próxima arma" onPointerDown={press("pickup")} onPointerUp={release("pickup")} onPointerCancel={release("pickup")} onPointerLeave={release("pickup")}>PEGAR</button>
+      )}
     </div>
     <div ref={joystickRef} className="virtual-joystick" role="application" aria-label="Joystick virtual para movimentar Rick"
       onPointerDown={e=>{e.preventDefault();joystickInput.current.pointerId=e.pointerId;e.currentTarget.setPointerCapture(e.pointerId);updateJoystick(e);}}
