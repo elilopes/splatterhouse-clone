@@ -5,6 +5,7 @@ import * as THREE from "three";
 import RickTaylorCharacter, { type RickMotion } from "./characters/RickTaylorCharacter";
 import { RickTaylorCharacter3DHDPlayer } from "./characters/RickTaylorCharacter3DHD";
 import { WebGPURenderer } from "three/webgpu";
+import MonsterProceduralCharacter from "./characters/MonsterProceduralCharacter";
 
 export type GraphicsQuality = "auto" | "standard" | "high";
 
@@ -380,54 +381,6 @@ function EnemyHeadMesh({ kind }: {kind:EnemyKind}) {
   </group>;
 }
 
-function EnemyModel({ kind, headless=false, missingArm=false, dissolve=0 }: {kind:EnemyKind; headless?:boolean; missingArm?:boolean; dissolve?:number}) {
-  const brute=kind==="brute", crawler=kind==="crawler";
-  const flesh=brute?"#75513d":kind==="spitter"?"#a05c43":"#873b36";
-  return <group>
-    <mesh position={[0,crawler?0.62:0.92,0]} scale={[brute?0.62:crawler?0.55:0.46,crawler?0.36:0.62,0.36]} castShadow><sphereGeometry args={[1,24,18]}/><meshStandardMaterial color={flesh} roughness={0.68} transparent={dissolve>0} opacity={1-dissolve}/></mesh>
-    {!headless ? (
-      <group position={[0,crawler?1.05:1.65,0.04]}>
-        <EnemyHeadMesh kind={kind}/>
-      </group>
-    ) : (
-      <mesh position={[0,crawler?0.95:1.48,0]} scale={[0.22,0.14,0.22]}>
-        <cylinderGeometry args={[0.75,1,0.7,12]}/>
-        <meshStandardMaterial color="#6e0c18" roughness={0.32}/>
-      </mesh>
-    )}
-    {[-1,1].filter(side=>!(missingArm&&side===1)).map(side=><group key={side}>
-      <mesh position={[side*(brute?0.58:0.47),crawler?0.56:0.9,0]} rotation={[0,0,side*0.55]}><capsuleGeometry args={[brute?0.19:0.13,0.55,6,12]}/><meshStandardMaterial color={flesh} transparent={dissolve>0} opacity={1-dissolve}/></mesh>
-      <mesh position={[side*0.24,crawler?0.22:0.36,-0.06]} rotation={[0,0,side*0.25]}><capsuleGeometry args={[0.14,0.45,6,12]}/><meshStandardMaterial color={flesh} transparent={dissolve>0} opacity={1-dissolve}/></mesh>
-    </group>)}
-    {/* Wet organic slime deposits: layered translucent films, raised blisters and gravity-formed drips */}
-    <group>
-      {[
-        [-0.31,1.17,0.285,0.16,0.085,0.035],
-        [0.24,0.86,0.325,0.19,0.07,0.028],
-        [-0.08,0.48,0.31,0.12,0.055,0.026],
-        [0.39,1.24,0.19,0.09,0.13,0.035],
-        [-0.43,0.72,0.16,0.08,0.15,0.03],
-        [0.02,1.48,0.24,0.13,0.045,0.022]
-      ].map((p,i)=><mesh key={i} position={[p[0],p[1],p[2]]} scale={[p[3],p[4],p[5]]} castShadow>
-        <sphereGeometry args={[1,28,20]}/>
-        <meshPhysicalMaterial color={i%3===0?"#8f9b42":i%3===1?"#596d2b":"#a2a45a"} roughness={0.075} metalness={0.015} clearcoat={1} clearcoatRoughness={0.025} transmission={0.12} thickness={0.8} ior={1.34} transparent opacity={0.92*(1-dissolve)}/>
-      </mesh>)}
-      {[
-        [-0.31,1.03,0.29,0.035,0.17],
-        [0.25,0.69,0.33,0.026,0.14],
-        [0.39,1.06,0.2,0.025,0.2],
-        [-0.43,0.54,0.17,0.022,0.13],
-        [0.04,1.42,0.25,0.018,0.12]
-      ].map((p,i)=><mesh key={"drip"+i} position={[p[0],p[1],p[2]]} scale={[p[3],p[4],p[3]*0.9]}>
-        <capsuleGeometry args={[0.5,0.6,8,12]}/>
-        <meshPhysicalMaterial color={i%2?"#697b30":"#a2a45a"} roughness={0.055} clearcoat={1} clearcoatRoughness={0.02} transmission={0.16} thickness={1.1} ior={1.34} transparent opacity={0.94*(1-dissolve)}/>
-      </mesh>)}
-    </group>
-    {brute&&Array.from({length:5},(_,i)=><mesh key={i} position={[-0.36+i*0.18,1.62,-0.1]} rotation={[0,0,-0.25]}><coneGeometry args={[0.12,0.48,7]}/><meshStandardMaterial color="#49332d"/></mesh>)}
-    {kind==="spitter"&&<mesh position={[0.28,1.05,0.1]} scale={[0.28,0.45,0.27]}><sphereGeometry args={[1,20,16]}/><meshPhysicalMaterial color="#b46b4c" roughness={0.19} clearcoat={0.85} clearcoatRoughness={0.08}/></mesh>}
-    {crawler&&Array.from({length:4},(_,i)=><mesh key={i} position={[-0.26+i*0.17,0.7,-0.25]} scale={[0.18,0.055,0.1]}><sphereGeometry args={[1,12,8]}/><meshStandardMaterial color="#4a171a"/></mesh>)}
-  </group>;
-}
 
 function WeaponModel({ id }: {id:WeaponId}) {
   return <group rotation={[0,0,-0.35]}>
@@ -1357,7 +1310,7 @@ function World({onScore,onKill,paused,onStageChange,controls,useHDCharacter,zoom
     ))}
 
     {enemies.current.map((e)=>(e.alive||e.bodyState!=="alive")&&(phase!==1||e.id>14||initialEnemiesVisible)&&<group key={e.id} ref={node=>{enemyGroups.current[e.id]=node;}} position={[e.x,e.y,e.z]}>
-      <EnemyModel kind={e.kind} headless={e.headless} missingArm={e.severedArm} dissolve={e.bodyState==="grabMelting" ? THREE.MathUtils.clamp(e.grabTimer/1.05,0,1) : e.bodyState==="macheteMelting" ? THREE.MathUtils.clamp(e.grabTimer/0.92,0,1) : 0}/>
+      <MonsterProceduralCharacter kind={e.kind} headless={e.headless} missingArm={e.severedArm} animation={e.animation} fallen={e.bodyState==="fallen"||e.bodyState==="grabFallen"||e.bodyState==="macheteFalling"} dissolve={e.bodyState==="grabMelting" ? THREE.MathUtils.clamp(e.grabTimer/1.05,0,1) : e.bodyState==="macheteMelting" ? THREE.MathUtils.clamp(e.grabTimer/0.92,0,1) : 0}/>
       {e.bodyState==="wallStuck"&&<mesh position={[0,0.95,-0.25]}><circleGeometry args={[1.05,16]}/><meshStandardMaterial color="#4a0911" roughness={0.35}/></mesh>}
     </group>)}
 
