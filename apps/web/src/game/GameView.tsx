@@ -1966,8 +1966,7 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
   const zoomTargetRef=useRef(1);
   const [zoomDisplay,setZoomDisplay]=useState(1);
   const pinchDistRef=useRef<number|null>(null);
-  const isHDPhase2=rendererMode==="webgpu"&&worldPhase===2;
-  const isPhase3=worldPhase===3;
+  // Qualidade Alta força o Rick HD independentemente do backend gráfico.\n  // Automática usa o HD quando WebGPU está disponível; Standard mantém o Rick convencional.\n  const useHDCharacter=graphicsQuality==="high"||(graphicsQuality==="auto"&&rendererMode==="webgpu");\n  const isHDPhase2=useHDCharacter&&worldPhase===2;\n  const isPhase3=worldPhase===3;
 
   const tpsAimRef=useRef<TpsAimInput>({yawDelta:0,pitchDelta:0,ads:false,reload:false});
   const lastMouseRef=useRef<{x:number;y:number}|null>(null);
@@ -2144,7 +2143,7 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
           renderer.shadowMap.type=THREE.PCFSoftShadowMap;
           return renderer;
         }}>
-        <World onScore={onScore} onKill={onKill} paused={paused} onStageChange={handleStageChange} initialStage={initialStage} onPhase3Clear={onPhase3Clear} controls={controls} useHDCharacter={rendererMode==="webgpu"} zoomTargetRef={zoomTargetRef} tpsAimRef={tpsAimRef} onTpsHudUpdate={setTpsHud} onRickVisible={()=>setPhaseLoading(false)} onStageLoading={()=>setPhaseLoading(true)}/>
+        <World onScore={onScore} onKill={onKill} paused={paused} onStageChange={handleStageChange} initialStage={initialStage} onPhase3Clear={onPhase3Clear} controls={controls} useHDCharacter={useHDCharacter} zoomTargetRef={zoomTargetRef} tpsAimRef={tpsAimRef} onTpsHudUpdate={setTpsHud} onRickVisible={()=>setPhaseLoading(false)} onStageLoading={()=>setPhaseLoading(true)}/>
       </Canvas>
     )}
     {(rendererMode===null||phaseLoading)&&(
