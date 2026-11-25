@@ -1449,7 +1449,9 @@ export function RickTaylorRig({
   } = useMemo(() => {
     const uBody = createUpperBodySkinnedGeometry();
     const trs = createTrousersSkinnedGeometry();
-    // 3DMM corporal paramétrico: silhueta atlética de Rick sem perder os detalhes esculpidos.\n    applyRickBody3DMM(uBody, DEFAULT_RICK_BODY_3DMM, "upper");\n    applyRickBody3DMM(trs, DEFAULT_RICK_BODY_3DMM, "lower");
+    // 3DMM corporal paramétrico: silhueta atlética de Rick sem perder os detalhes esculpidos.
+    applyRickBody3DMM(uBody, DEFAULT_RICK_BODY_3DMM, "upper");
+    applyRickBody3DMM(trs, DEFAULT_RICK_BODY_3DMM, "lower");
     const msk = createTerrorMaskGeometry();
     const bt = createCombatBootGeometry();
     const cap = new THREE.CapsuleGeometry(0.12, 0.42, 12, 28);
