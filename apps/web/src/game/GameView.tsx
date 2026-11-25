@@ -114,6 +114,59 @@ function FleshyWall() {
     </group>)}
     {Array.from({length:30},(_,i)=><mesh key={i} position={[-26.2+i*0.84,4.2-(i%4)*0.14,-1.52]} rotation={[0,0,Math.PI]}><capsuleGeometry args={[0.085,0.42+(i%4)*0.1,5,10]}/><meshStandardMaterial color="#637638" roughness={0.22}/></mesh>)}
     {Array.from({length:20},(_,i)=><mesh key={i} position={[-26.0+i*1.25,0.12,-1.42]} scale={[0.78,0.12,0.44]}><sphereGeometry args={[0.5,16,10]}/><meshStandardMaterial color="#65783a" roughness={0.2}/></mesh>)}
+    {/* Urubu carniceiro pousado no topo do muro da Fase 1. */}
+    <group position={[-12.8,5.18,-2.18]} rotation={[0,-0.22,0]}>
+      {/* Corpo e peito escuro */}
+      <mesh position={[0,0.05,0]} rotation={[0,0,-0.12]} scale={[0.62,0.42,0.34]} castShadow>
+        <sphereGeometry args={[1,20,14]}/>
+        <meshStandardMaterial color="#171719" roughness={0.94}/>
+      </mesh>
+      <mesh position={[0.12,0.28,0.015]} scale={[0.43,0.29,0.31]} castShadow>
+        <sphereGeometry args={[1,18,12]}/>
+        <meshStandardMaterial color="#29272a" roughness={0.98}/>
+      </mesh>
+      {/* Pescoço nu e cabeça avermelhada */}
+      <mesh position={[0.43,0.42,0]} rotation={[0,0,-0.52]} castShadow>
+        <capsuleGeometry args={[0.105,0.42,6,10]}/>
+        <meshStandardMaterial color="#6e2924" roughness={0.8}/>
+      </mesh>
+      <mesh position={[0.62,0.66,0.015]} scale={[0.19,0.22,0.17]} castShadow>
+        <sphereGeometry args={[1,16,12]}/>
+        <meshStandardMaterial color="#8d3930" roughness={0.76}/>
+      </mesh>
+      <mesh position={[0.78,0.58,0.02]} rotation={[0,0,-0.35]} castShadow>
+        <coneGeometry args={[0.095,0.28,7]}/>
+        <meshStandardMaterial color="#b58a43" roughness={0.58}/>
+      </mesh>
+      <mesh position={[0.67,0.7,0.16]}><sphereGeometry args={[0.025,8,8]}/><meshBasicMaterial color="#e3c66d"/></mesh>
+      {/* Asas dobradas com penas recortadas */}
+      <mesh position={[-0.08,0.22,0.28]} rotation={[0.18,0.08,-0.08]} scale={[0.48,0.12,0.24]} castShadow>
+        <sphereGeometry args={[1,16,10]}/>
+        <meshStandardMaterial color="#111114" roughness={1}/>
+      </mesh>
+      <mesh position={[-0.08,0.2,-0.28]} rotation={[-0.18,-0.08,-0.08]} scale={[0.48,0.12,0.24]} castShadow>
+        <sphereGeometry args={[1,16,10]}/>
+        <meshStandardMaterial color="#111114" roughness={1}/>
+      </mesh>
+      {[-1,0,1].map((v)=><mesh key={v} position={[-0.35+v*0.12,0.13,0.31]} rotation={[0.12,0,-0.3+v*0.13]} scale={[0.13,0.055,0.2]}><capsuleGeometry args={[0.09,0.42,4,8]}/><meshStandardMaterial color="#252329" roughness={1}/></mesh>)}
+      {/* Pernas agarradas à borda */}
+      {[-0.2,0.18].map((x)=><group key={x} position={[x,-0.28,0.04]}>
+        <mesh position={[0,-0.12,0]}><cylinderGeometry args={[0.035,0.025,0.28,7]}/><meshStandardMaterial color="#8b5c36"/></mesh>
+        {[-1,0,1].map((z)=><mesh key={z} position={[0.045,-0.25,z*0.07]} rotation={[0,0,-0.5]}><coneGeometry args={[0.035,0.18,6]}/><meshStandardMaterial color="#a47a45"/></mesh>)}
+      </group>)}
+    </group>
+    {/* Planta retorcida e ressequida crescendo por cima da muralha. */}
+    <group position={[-8.2,5.05,-1.62]}>
+      <mesh position={[0,0.68,0]} rotation={[0,0,-0.16]}><cylinderGeometry args={[0.035,0.09,1.45,7]}/><meshStandardMaterial color="#30251a" roughness={1}/></mesh>
+      <mesh position={[-0.24,1.25,0.02]} rotation={[0,0,0.58]}><cylinderGeometry args={[0.025,0.045,0.92,6]}/><meshStandardMaterial color="#40301e" roughness={1}/></mesh>
+      <mesh position={[0.27,1.48,-0.02]} rotation={[0,0,-0.82]}><cylinderGeometry args={[0.02,0.04,1.05,6]}/><meshStandardMaterial color="#3b2b1d" roughness={1}/></mesh>
+      <mesh position={[-0.46,1.67,0.02]} rotation={[0,0,0.9]}><cylinderGeometry args={[0.012,0.03,0.62,6]}/><meshStandardMaterial color="#4a3520" roughness={1}/></mesh>
+      <mesh position={[0.58,1.92,-0.03]} rotation={[0,0,-0.55]}><cylinderGeometry args={[0.012,0.025,0.68,6]}/><meshStandardMaterial color="#49341f" roughness={1}/></mesh>
+      <mesh position={[-0.56,1.98,0.02]} rotation={[0,0,0.65]}><coneGeometry args={[0.12,0.42,5]}/><meshStandardMaterial color="#34351d" roughness={1}/></mesh>
+      <mesh position={[0.77,2.22,-0.02]} rotation={[0,0,-0.8]}><coneGeometry args={[0.11,0.38,5]}/><meshStandardMaterial color="#3b3a20" roughness={1}/></mesh>
+      <mesh position={[0.04,2.05,0.02]} rotation={[0,0,0.35]}><coneGeometry args={[0.1,0.34,5]}/><meshStandardMaterial color="#34351d" roughness={1}/></mesh>
+      {[-0.34,0.34].map((x)=><mesh key={x} position={[x,0.14,0.02]} rotation={[0,0,x*1.8]}><capsuleGeometry args={[0.045,0.72,5,7]}/><meshStandardMaterial color="#4a3b23" roughness={1}/></mesh>)}
+    </group>
     {/* Único monstro grudado no início do muro da Fase 1: crawler sem uma perna e com cabeça quebrada */}
     <group position={[-22.0,1.38,-1.52]} rotation={[0.08,0.06,-0.26]} scale={[1.08,1.02,0.42]}>
       <MonsterProceduralCharacter kind="crawler" missingLeg brokenHead pinned moving={false} attackPulse={0}/>
