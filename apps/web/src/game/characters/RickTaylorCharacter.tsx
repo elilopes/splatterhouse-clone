@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
-export type RickWeaponId = "pipe" | "machete" | "shotgun";
+export type RickWeaponId = "sickle" | "pipe" | "machete" | "shotgun";
 
 export type RickPipeAttackStyle = "bat" | "overhead" | "macheteHead" | "macheteArm";
 
@@ -709,7 +709,7 @@ function ellipsoid(
 }
 
 function HeldWeaponMesh({ id, muzzleRef }: { id: RickWeaponId; muzzleRef: React.RefObject<THREE.Group | null> }) {
-  if (id === "pipe") {
+  if (id === "sickle") {\n    return (\n      <group position={[0, 0, -0.28]} rotation={[0, 0, -0.12]}>\n        <mesh position={[0, 0, 0.22]} rotation={[Math.PI / 2, 0, 0]} castShadow>\n          <cylinderGeometry args={[0.035, 0.035, 0.52, 10]} />\n          <meshStandardMaterial color="#513020" roughness={0.86} />\n        </mesh>\n        <mesh position={[0, 0.02, -0.18]} rotation={[0, 0, -0.42]} castShadow>\n          <torusGeometry args={[0.34, 0.035, 10, 28, Math.PI * 0.82]} />\n          <meshStandardMaterial color="#c7ccd0" metalness={0.92} roughness={0.2} />\n        </mesh>\n        <mesh position={[-0.13, 0.13, -0.18]} rotation={[0, 0, -0.42]} castShadow>\n          <coneGeometry args={[0.055, 0.22, 10]} />\n          <meshStandardMaterial color="#dce0df" metalness={0.9} roughness={0.18} />\n        </mesh>\n      </group>\n    );\n  }\n  if (id === "pipe") {
     return (
       <group position={[0, 0, -0.35]}>
         <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
@@ -1218,7 +1218,7 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     const oppositeSwing = motion.moving ? Math.max(0, Math.cos(phase + Math.PI)) : 0;
     const gait = motion.moving ? stride : 0;
     const activeWeapon = equippedWeapon ?? motion.weapon;
-    const attackDur = activeWeapon === "shotgun" ? 0.42 : activeWeapon === "pipe" ? 0.68 : activeWeapon === "machete" ? 0.56 : 0.36;
+    const attackDur = activeWeapon === "shotgun" ? 0.42 : activeWeapon === "pipe" ? 0.68 : activeWeapon === "machete" || activeWeapon === "sickle" ? 0.56 : 0.36;
     const p = motion.attackTime > 0
       ? activeWeapon === "pipe"
         ? THREE.MathUtils.clamp(motion.attackProgress, 0, 1)
