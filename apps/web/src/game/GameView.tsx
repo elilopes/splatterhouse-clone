@@ -1004,7 +1004,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
 
   const doAttack=()=>{
     if(attackCooldown.current>0)return;
-    if(phase===3){
+    if(phase===3&&equipped!=="sickle"){
       firePhase3Shotgun();
       return;
     }
@@ -1149,7 +1149,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   const doJump=()=>{if(!grounded.current)return;grounded.current=false;jumpVelocity.current=6.2;};
 
   useEffect(()=>{
-    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();keys.current.add(k);if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="k"&&phase!==3)doGrab();if(k===" "||k==="l")doJump();if(k==="e"&&phase===1)doPickup();if(k==="r"&&phase===3&&tpsReloadTimer.current<=0&&tpsAmmo.current<TPS_MAG_SIZE){tpsReloadTimer.current=1.05;}};
+    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();keys.current.add(k);if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="k"&&phase!==3)doGrab();if(k===" "||k==="l")doJump();if(k==="e"&&phase===1)doPickup();if(k==="v"&&phase===3){const next=equipped==="shotgun"?"sickle":"shotgun";setEquipped(next);motion.current.weapon=next;}if(k==="r"&&phase===3&&tpsReloadTimer.current<=0&&tpsAmmo.current<TPS_MAG_SIZE){tpsReloadTimer.current=1.05;}};
     const up=(e:KeyboardEvent)=>keys.current.delete(e.key.toLowerCase());
     window.addEventListener("keydown",down);window.addEventListener("keyup",up);return()=>{window.removeEventListener("keydown",down);window.removeEventListener("keyup",up);};
   });
@@ -2026,7 +2026,6 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
   useEffect(()=>{
     if(!isPhase3)return;
     const onKeyDown=(e:KeyboardEvent)=>{
-      if(e.key.toLowerCase()==="v"){const next=equipped==="shotgun"?"sickle":"shotgun";setEquipped(next);motion.current.weapon=next;}
       if(e.key==="Shift")tpsAimRef.current.ads=true;
     };
     const onKeyUp=(e:KeyboardEvent)=>{
@@ -2040,7 +2039,7 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
       tpsAimRef.current.ads=false;
       lastMouseRef.current=null;
     };
-  },[isPhase3,equipped]);
+  },[isPhase3]);
 
   const joystickRef=useRef<HTMLDivElement>(null);
   const joystickInput=useRef({x:0,y:0,pointerId:-1});
