@@ -617,7 +617,8 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   };
 
   const spawnGore=(x:number,y:number,z:number,count:number,spread=4.2,skullCount=0)=>{
-    for(let i=0;i<count;i++){
+    const enhancedCount=Math.ceil(count*1.55);
+    for(let i=0;i<enhancedCount;i++){
       const angle=(i/count)*Math.PI*2+Math.random()*0.4;
       const spd=1.6+Math.random()*spread;
       effects.current.push({
