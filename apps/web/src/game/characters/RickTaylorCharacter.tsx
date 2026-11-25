@@ -15,7 +15,7 @@ export type RickMotion = {
   jumpHeight: number;
   weapon: RickWeaponId | null;
   slideTime?: number;
-  specialMove?: "slide" | "sweep" | null;
+  specialMove?: "slide" | "sweep" | "escorrao" | "superJump" | "impact" | null;
   shotgunAimPitch?: number;
   shotgunAimYaw?: number;
 };
@@ -1546,7 +1546,7 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
 
     neckBone.rotation.y = THREE.MathUtils.damp(neckBone.rotation.y, -torsoRotY * 0.25, 14, dt);
     headBone.rotation.y = THREE.MathUtils.damp(headBone.rotation.y, -torsoRotY * 0.40, 14, dt);
-    if(motion.specialMove==="sweep"){
+    if(motion.specialMove==="sweep"||motion.specialMove==="escorrao"){
       torsoRotX=0.28;rShoulderX=0.72;lShoulderX=0.68;rElbowX=0.95;lElbowX=0.95;
     }else if(motion.specialMove==="slide"){
       torsoRotX=0.34;rShoulderX=0.95;lShoulderX=0.95;rElbowX=1.05;lElbowX=1.05;
@@ -1571,7 +1571,7 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     rightElbowBone.rotation.x = nextRElbow;
 
     const sliding=THREE.MathUtils.clamp((motion.slideTime??0)/0.58,0,1);
-    const sweeping=motion.specialMove==="sweep"?1:0;
+    const sweeping=motion.specialMove==="sweep"||motion.specialMove==="escorrao"?1:0;
     leftThighBone.rotation.x = THREE.MathUtils.damp(
       leftThighBone.rotation.x,
       sweeping?1.18:sliding?0.78:motion.moving ? stride * 0.48 : 0.015 * Math.sin(t),
