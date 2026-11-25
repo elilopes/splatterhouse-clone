@@ -1574,25 +1574,25 @@ export default function RickTaylorCharacter({ motion, equippedWeapon = null }: P
     const sweeping=motion.specialMove==="sweep"||motion.specialMove==="escorrao"?1:0;
     leftThighBone.rotation.x = THREE.MathUtils.damp(
       leftThighBone.rotation.x,
-      sweeping?1.18:sliding?0.78:motion.moving ? stride * 0.48 : 0.015 * Math.sin(t),
+      sweeping?1.18:motion.specialMove==="superJump"?-1.05:motion.specialMove==="impact"?0.72:sliding?0.78:motion.moving ? stride * 0.48 : 0.015 * Math.sin(t),
       12,
       dt
     );
     rightThighBone.rotation.x = THREE.MathUtils.damp(
       rightThighBone.rotation.x,
-      sweeping?-0.72:sliding?0.55:motion.moving ? oppositeStride * 0.48 : -0.015 * Math.sin(t),
+      sweeping?-0.72:motion.specialMove==="superJump"?-1.05:motion.specialMove==="impact"?0.72:sliding?0.55:motion.moving ? oppositeStride * 0.48 : -0.015 * Math.sin(t),
       12,
       dt
     );
     leftKneeBone.rotation.x = THREE.MathUtils.damp(
       leftKneeBone.rotation.x,
-      sweeping?-0.35:sliding?-0.18:motion.moving ? -swing * 0.82 : 0,
+      sweeping?-0.35:motion.specialMove==="superJump"?-0.9:motion.specialMove==="impact"?-1.15:sliding?-0.18:motion.moving ? -swing * 0.82 : 0,
       14,
       dt
     );
     rightKneeBone.rotation.x = THREE.MathUtils.damp(
       rightKneeBone.rotation.x,
-      sweeping?-0.95:sliding?-0.18:motion.moving ? -oppositeSwing * 0.82 : 0,
+      sweeping?-0.95:motion.specialMove==="superJump"?-0.9:motion.specialMove==="impact"?-1.15:sliding?-0.18:motion.moving ? -oppositeSwing * 0.82 : 0,
       14,
       dt
     );
