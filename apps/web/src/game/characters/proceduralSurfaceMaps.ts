@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { MeshStandardNodeMaterial } from "three/webgpu";
-import { attribute, color, float, normalMap as normalMapNode, texture, uv, vec2 } from "three/tsl";
+import { attribute, color, float, mix, normalMap as normalMapNode, texture, uniform, uv, vec2 } from "three/tsl";
 
 export type ProceduralPBRMaps = {
   normalMap: THREE.DataTexture;
@@ -292,10 +292,12 @@ export function createWebGPUSurfaceNodeMaterial(
   const baseColor = color(baseColorHex);
   const primaryUV = uv();
   const aoUV = useSecondaryUVForAO ? attribute("uv2", "vec2") : primaryUV;
+  const shine = uniform(0);
 
-  material.colorNode = albedoMap
+  const baseAlbedo = albedoMap
     ? texture(albedoMap, primaryUV).mul(baseColor)
     : baseColor;
+  material.colorNode = mix(baseAlbedo, color("#e8f0fa"), shine.mul(0.9));
 
   material.normalNode = normalMapNode(
     texture(maps.normalMap, primaryUV),
@@ -303,9 +305,13 @@ export function createWebGPUSurfaceNodeMaterial(
   );
 
   material.aoNode = texture(maps.aoMap, aoUV).r.mul(float(aoIntensity));
-  material.roughnessNode = texture(maps.roughnessMap, primaryUV).r.mul(
+  const baseRough = texture(maps.roughnessMap, primaryUV).r.mul(
     float(roughnessMultiplier)
   );
+  material.roughnessNode = mix(baseRough, float(0.11), shine);
+  material.metalnessNode = mix(float(metalness), float(0.98), shine);
+  material.emissiveNode = color("#9ab4d8").mul(shine.mul(0.45));
+  material.userData.metallicShineUniform = shine;
 
   material.metalness = metalness;
   material.vertexColors = vertexColors;

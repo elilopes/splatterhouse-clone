@@ -1476,16 +1476,20 @@ export function RickTaylorRig({
       side: THREE.DoubleSide,
     });
 
-    const bsMat = new THREE.MeshStandardMaterial({ color: "#362f35", roughness: 0.82 });
+    const bsMat = new THREE.MeshStandardMaterial({ color: "#362f35", roughness: 0.82, envMap: canvasMaps.maskEnvMap, envMapIntensity: 0 });
     const lMat = new THREE.MeshStandardMaterial({
       color: "#1d181a",
       roughness: 0.6,
       metalness: 0.06,
+      envMap: canvasMaps.maskEnvMap,
+      envMapIntensity: 0,
     });
     const mtMat = new THREE.MeshStandardMaterial({
       color: "#b6a16e",
       roughness: 0.26,
       metalness: 0.78,
+      envMap: canvasMaps.maskEnvMap,
+      envMapIntensity: 1.1,
     });
 
     const bones: THREE.Bone[] = [];
@@ -1586,9 +1590,54 @@ export function RickTaylorRig({
     canvasMaps,
   ]);
 
+  const metalShineRef = useRef(0);
+  const chromeColor = useMemo(() => new THREE.Color("#e8f0fa"), []);
+  const chromeEmissive = useMemo(() => new THREE.Color("#9ab4d8"), []);
+  const maskBaseColor = useMemo(() => new THREE.Color("#ffffff"), []);
+  const bootSoleBaseColor = useMemo(() => new THREE.Color("#362f35"), []);
+  const leatherBaseColor = useMemo(() => new THREE.Color("#1d181a"), []);
+  const metalBaseColor = useMemo(() => new THREE.Color("#b6a16e"), []);
+
   useFrame((_, delta) => {
     if (!root.current) return;
     const dt = Math.min(delta, 0.05);
+    const targetMetalShine = motion.specialMove === "escorrao" ? 1 : 0;
+    metalShineRef.current = THREE.MathUtils.damp(metalShineRef.current, targetMetalShine, targetMetalShine > 0 ? 30 : 18, dt);
+    if (metalShineRef.current < 0.004 && targetMetalShine === 0) metalShineRef.current = 0;
+    const s = metalShineRef.current;
+    for (const nodeMat of [skinMat, skinAccessoryMat, jeansMat]) {
+      const shineUniform = nodeMat.userData.metallicShineUniform as { value: number } | undefined;
+      if (shineUniform) shineUniform.value = s;
+      nodeMat.envMap = canvasMaps.maskEnvMap;
+      nodeMat.envMapIntensity = s * 2.6;
+    }
+    maskMat.color.copy(maskBaseColor).lerp(chromeColor, s);
+    maskMat.metalness = THREE.MathUtils.lerp(0.96, 1.0, s);
+    maskMat.roughness = THREE.MathUtils.lerp(0.42, 0.09, s);
+    maskMat.envMapIntensity = THREE.MathUtils.lerp(2.35, 3.0, s);
+    maskMat.emissive.copy(chromeEmissive);
+    maskMat.emissiveIntensity = s * 0.42;
+
+    bootSoleMat.color.copy(bootSoleBaseColor).lerp(chromeColor, s);
+    bootSoleMat.metalness = THREE.MathUtils.lerp(0, 0.98, s);
+    bootSoleMat.roughness = THREE.MathUtils.lerp(0.82, 0.12, s);
+    bootSoleMat.envMapIntensity = s * 2.7;
+    bootSoleMat.emissive.copy(chromeEmissive);
+    bootSoleMat.emissiveIntensity = s * 0.42;
+
+    leatherMat.color.copy(leatherBaseColor).lerp(chromeColor, s);
+    leatherMat.metalness = THREE.MathUtils.lerp(0.06, 0.98, s);
+    leatherMat.roughness = THREE.MathUtils.lerp(0.6, 0.11, s);
+    leatherMat.envMapIntensity = s * 2.75;
+    leatherMat.emissive.copy(chromeEmissive);
+    leatherMat.emissiveIntensity = s * 0.42;
+
+    metalMat.color.copy(metalBaseColor).lerp(chromeColor, s);
+    metalMat.metalness = THREE.MathUtils.lerp(0.78, 0.98, s);
+    metalMat.roughness = THREE.MathUtils.lerp(0.26, 0.1, s);
+    metalMat.envMapIntensity = THREE.MathUtils.lerp(1.1, 2.8, s);
+    metalMat.emissive.copy(chromeEmissive);
+    metalMat.emissiveIntensity = s * 0.42;
     const t = performance.now() * 0.001;
     gaitPhase.current += dt * (motion.moving ? 8.4 : 0);
     const phase = gaitPhase.current;
@@ -1896,8 +1945,18 @@ export function RickTaylorRig({
       hipsBone.position.y = 1.05 + bounceY;
 
       const shotgunFiring = activeWeapon === "shotgun" && motion.attackTime > 0;
-      const torsoDamp = shotgunFiring ? 38 : 18;
-      const armDamp = shotgunFiring ? 48 : 24;
+      const superJumpAir = motion.specialMove === "superJump" && motion.jumpHeight > 0.05;
+      const torsoDamp = shotgunFiring ? 38 : superJumpAir ? 5.2 : 18;
+      const armDamp = shotgunFiring ? 48 : superJumpAir ? 5.2 : 24;
+      const legDamp = superJumpAir ? 4.2 : 14;
+
+      if(motion.specialMove==="sweep"||motion.specialMove==="escorrao"){
+        torsoRotX=0.28;rShoulderX=0.72;lShoulderX=0.68;rElbowX=0.95;lElbowX=0.95;
+      }else if(motion.specialMove==="slide"){
+        torsoRotX=0.34;rShoulderX=0.95;lShoulderX=0.95;rElbowX=1.05;lElbowX=1.05;
+      }else if(superJumpAir){
+        torsoRotX=-0.16;lShoulderX=0.58;rShoulderX=0.58;lElbowX=1.18;rElbowX=1.18;
+      }
 
       spineBone.rotation.y = THREE.MathUtils.damp(spineBone.rotation.y, torsoRotY * 0.42, torsoDamp, dt);
       spineBone.rotation.x = THREE.MathUtils.damp(spineBone.rotation.x, torsoRotX * 0.45, torsoDamp, dt);
@@ -1909,25 +1968,20 @@ export function RickTaylorRig({
 
       neckBone.rotation.y = THREE.MathUtils.damp(neckBone.rotation.y, -torsoRotY * 0.25, 14, dt);
       headBone.rotation.y = THREE.MathUtils.damp(headBone.rotation.y, -torsoRotY * 0.4, 14, dt);
-      if(motion.specialMove==="sweep"||motion.specialMove==="escorrao"){
-        torsoRotX=0.28;rShoulderX=0.72;lShoulderX=0.68;rElbowX=0.95;lElbowX=0.95;
-      }else if(motion.specialMove==="slide"){
-        torsoRotX=0.34;rShoulderX=0.95;lShoulderX=0.95;rElbowX=1.05;lElbowX=1.05;
-      }
       headBone.rotation.x = THREE.MathUtils.damp(headBone.rotation.x, grab * 0.08 - torsoRotX * 0.35, 10, dt);
 
       leftShoulderBone.rotation.x = THREE.MathUtils.damp(
         leftShoulderBone.rotation.x,
         lShoulderX,
-        shotgunFiring ? 44 : 22,
+        shotgunFiring ? 44 : superJumpAir ? 5.2 : 22,
         dt
       );
-      leftShoulderBone.rotation.z = THREE.MathUtils.damp(leftShoulderBone.rotation.z, lShoulderZ, 18, dt);
+      leftShoulderBone.rotation.z = THREE.MathUtils.damp(leftShoulderBone.rotation.z, lShoulderZ, superJumpAir ? 5.2 : 18, dt);
       rightShoulderBone.rotation.x = THREE.MathUtils.damp(rightShoulderBone.rotation.x, rShoulderX, armDamp, dt);
-      rightShoulderBone.rotation.z = THREE.MathUtils.damp(rightShoulderBone.rotation.z, rShoulderZ, 20, dt);
+      rightShoulderBone.rotation.z = THREE.MathUtils.damp(rightShoulderBone.rotation.z, rShoulderZ, superJumpAir ? 5.2 : 20, dt);
 
       const nextLElbow = leftForearm.current
-        ? THREE.MathUtils.damp(leftForearm.current.rotation.x, lElbowX, shotgunFiring ? 44 : 22, dt)
+        ? THREE.MathUtils.damp(leftForearm.current.rotation.x, lElbowX, shotgunFiring ? 44 : superJumpAir ? 5.2 : 22, dt)
         : lElbowX;
       const nextRElbow = rightForearm.current
         ? THREE.MathUtils.damp(rightForearm.current.rotation.x, rElbowX, armDamp, dt)
@@ -1941,25 +1995,25 @@ export function RickTaylorRig({
       leftThighBone.rotation.x = THREE.MathUtils.damp(
         leftThighBone.rotation.x,
         sweeping ? 1.18 : motion.specialMove === "superJump" ? -1.05 : motion.specialMove === "impact" ? 0.72 : sliding ? 0.78 : motion.moving ? stride * 0.48 : 0.015 * Math.sin(t),
-        14,
+        legDamp,
         dt
       );
       rightThighBone.rotation.x = THREE.MathUtils.damp(
         rightThighBone.rotation.x,
         sweeping ? -0.72 : motion.specialMove === "superJump" ? -1.05 : motion.specialMove === "impact" ? 0.72 : sliding ? 0.55 : motion.moving ? oppositeStride * 0.48 : -0.015 * Math.sin(t),
-        14,
+        legDamp,
         dt
       );
       leftKneeBone.rotation.x = THREE.MathUtils.damp(
         leftKneeBone.rotation.x,
         sweeping ? -0.35 : motion.specialMove === "superJump" ? -0.9 : motion.specialMove === "impact" ? -1.15 : sliding ? -0.18 : motion.moving ? -swing * 0.82 : 0,
-        14,
+        legDamp,
         dt
       );
       rightKneeBone.rotation.x = THREE.MathUtils.damp(
         rightKneeBone.rotation.x,
         sweeping ? -0.95 : motion.specialMove === "superJump" ? -0.9 : motion.specialMove === "impact" ? -1.15 : sliding ? -0.18 : motion.moving ? -oppositeSwing * 0.82 : 0,
-        14,
+        legDamp,
         dt
       );
 
