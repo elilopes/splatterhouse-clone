@@ -14,6 +14,9 @@ type Props = {
   kind: ProceduralMonsterKind;
   headless?: boolean;
   missingArm?: boolean;
+  missingLeg?: boolean;
+  brokenHead?: boolean;
+  pinned?: boolean;
   dissolve?: number;
   animation?: number;
   moving?: boolean;
@@ -42,6 +45,10 @@ type Built = {
   node: MeshStandardNodeMaterial;
   headBone: THREE.Bone | null;
   neckStump: THREE.Mesh;
+  brokenSkullGroup: THREE.Group;
+  legStumpGroup: THREE.Group;
+  rightEye: THREE.Mesh;
+  leftEye: THREE.Mesh;
   extraDisposables: Array<{ dispose: () => void }>;
 };
 
@@ -123,7 +130,8 @@ function joinIndexedGeometriesWithBones(
 }
 
 function build(kind: ProceduralMonsterKind): Built {
-  const brute = kind === "brute";\n  const crawler = kind === "crawler";
+  const brute = kind === "brute";
+  const crawler = kind === "crawler";
   const color = brute ? "#7d6048" : kind === "spitter" ? "#a05c43" : "#873b36";
 
   const bones: THREE.Bone[] = [];
@@ -283,10 +291,12 @@ function build(kind: ProceduralMonsterKind): Built {
     emissive: "#b82008",
     emissiveIntensity: 1.15,
   });
+  const eyes: THREE.Mesh[] = [];
   for (const s of [-1, 1]) {
     const eye = new THREE.Mesh(eyeGeo, eyeMat);
     eye.position.set(s * 0.16, 0.22, 0.39);
     head.add(eye);
+    eyes.push(eye);
   }
   const mouthGeo = new THREE.SphereGeometry(0.16, 12, 8);
   const mouthMat = new THREE.MeshStandardMaterial({ color: "#26070c", roughness: 0.4 });
@@ -303,6 +313,47 @@ function build(kind: ProceduralMonsterKind): Built {
   neckStump.visible = false;
   neck.add(neckStump);
 
+  // Crushed / broken skull gore & bone shards attached to head bone
+  const brokenSkullGroup = new THREE.Group();
+  const brainGeo = new THREE.SphereGeometry(0.21, 14, 10);
+  const brainMat = new THREE.MeshStandardMaterial({ color: "#7a1420", roughness: 0.26 });
+  const brainBlob = new THREE.Mesh(brainGeo, brainMat);
+  brainBlob.position.set(0.11, 0.34, 0.08);
+  brainBlob.scale.set(1.15, 0.78, 1.05);
+  brokenSkullGroup.add(brainBlob);
+
+  const shardGeo = new THREE.ConeGeometry(0.08, 0.22, 5);
+  const shardMat = new THREE.MeshStandardMaterial({ color: "#d6cbb8", roughness: 0.55 });
+  const shardSpecs: Array<[number, number, number, number, number, number]> = [
+    [0.24, 0.42, 0.16, 0.4, 0.2, -0.6],
+    [0.02, 0.46, 0.22, 0.55, 0.1, 0.35],
+    [0.26, 0.26, -0.05, -0.3, 0.4, -0.95],
+  ];
+  for (const [sx, sy, sz, rx, ry, rz] of shardSpecs) {
+    const shard = new THREE.Mesh(shardGeo, shardMat);
+    shard.position.set(sx, sy, sz);
+    shard.rotation.set(rx, ry, rz);
+    brokenSkullGroup.add(shard);
+  }
+  brokenSkullGroup.visible = false;
+  head.add(brokenSkullGroup);
+
+  // Bloody severed thigh stump attached to right hip socket
+  const legStumpGroup = new THREE.Group();
+  const thighStumpGeo = new THREE.CylinderGeometry(0.13, 0.16, 0.24, 12);
+  const thighStump = new THREE.Mesh(thighStumpGeo, stumpMat);
+  thighStump.position.set(0, -0.1, 0);
+  legStumpGroup.add(thighStump);
+  const femurGeo = new THREE.CylinderGeometry(0.045, 0.055, 0.18, 8);
+  const femurTip = new THREE.Mesh(femurGeo, shardMat);
+  femurTip.position.set(0, -0.22, 0.02);
+  femurTip.rotation.z = 0.15;
+  legStumpGroup.add(femurTip);
+  const rightHipX = brute ? 0.42 : crawler ? 0.19 : 0.26;
+  legStumpGroup.position.set(rightHipX, -0.02, 0);
+  legStumpGroup.visible = false;
+  pelvis.add(legStumpGroup);
+
   const group = new THREE.Group();
   group.add(mesh);
 
@@ -316,7 +367,24 @@ function build(kind: ProceduralMonsterKind): Built {
     node,
     headBone: head,
     neckStump,
-    extraDisposables: [eyeGeo, eyeMat, mouthGeo, mouthMat, stumpGeo, stumpMat],
+    brokenSkullGroup,
+    legStumpGroup,
+    leftEye: eyes[0],
+    rightEye: eyes[1],
+    extraDisposables: [
+      eyeGeo,
+      eyeMat,
+      mouthGeo,
+      mouthMat,
+      stumpGeo,
+      stumpMat,
+      brainGeo,
+      brainMat,
+      shardGeo,
+      shardMat,
+      thighStumpGeo,
+      femurGeo,
+    ],
   };
 }
 
@@ -324,6 +392,9 @@ export default function MonsterProceduralCharacter({
   kind,
   headless = false,
   missingArm = false,
+  missingLeg = false,
+  brokenHead = false,
+  pinned = false,
   dissolve = 0,
   animation = 0,
   moving = true,
@@ -352,12 +423,12 @@ export default function MonsterProceduralCharacter({
   useFrame((_, dt) => {
     const clampedDt = Math.min(dt, 0.05);
     const strideRate = kind === "crawler" ? 7.8 : kind === "brute" ? 4.4 : 5.6;
-    if (!fallen) {
+    if (!fallen && !pinned) {
       animClock.current += clampedDt * (moving ? strideRate : 1.3);
     }
 
     const t = animClock.current;
-    const p = THREE.MathUtils.clamp(attackPulse, 0, 1);
+    const p = pinned ? 0 : THREE.MathUtils.clamp(attackPulse, 0, 1);
     const bm = rig.boneMap;
     const head = bm.head;
     const neck = bm.neck;
@@ -366,22 +437,32 @@ export default function MonsterProceduralCharacter({
     const pelvis = bm.pelvis;
 
     if (head) {
-      head.rotation.x = Math.sin(t * 1.4) * 0.07 - p * 0.24;
-      head.scale.setScalar(headless ? 0.0001 : 1);
-      head.visible = !headless;
+      if (brokenHead && !headless) {
+        head.rotation.set(0.32, 0.16, -0.52);
+        head.scale.set(0.88, 0.56, 0.72);
+        head.visible = true;
+      } else {
+        head.rotation.set(pinned ? 0.18 : Math.sin(t * 1.4) * 0.07 - p * 0.24, 0, 0);
+        head.scale.setScalar(headless ? 0.0001 : 1);
+        head.visible = !headless;
+      }
     }
     rig.neckStump.visible = headless;
+    rig.brokenSkullGroup.visible = brokenHead && !headless;
+    rig.rightEye.visible = !brokenHead;
+    rig.leftEye.scale.setScalar(brokenHead ? 0.62 : 1);
+    rig.legStumpGroup.visible = missingLeg;
 
     if (pelvis) {
-      pelvis.position.y = fallen ? 0.42 : 0.42 + (moving ? Math.abs(Math.sin(t)) * 0.055 : 0);
-      pelvis.rotation.z = fallen ? 0 : moving ? Math.sin(t) * 0.055 : 0;
+      pelvis.position.y = fallen || pinned ? 0.42 : 0.42 + (moving ? Math.abs(Math.sin(t)) * 0.055 : 0);
+      pelvis.rotation.z = fallen || pinned ? 0 : moving ? Math.sin(t) * 0.055 : 0;
     }
-    if (neck) neck.rotation.x = Math.sin(t * 1.1) * 0.07;
+    if (neck) neck.rotation.x = pinned ? 0.22 : Math.sin(t * 1.1) * 0.07;
     if (chest) {
-      chest.rotation.x = (moving ? 0.06 : 0) + Math.sin(t * 1.4) * 0.045 - p * 0.15;
-      chest.rotation.z = Math.sin(t * 0.7) * 0.04;
+      chest.rotation.x = pinned ? 0.24 : (moving ? 0.06 : 0) + Math.sin(t * 1.4) * 0.045 - p * 0.15;
+      chest.rotation.z = pinned ? -0.14 : Math.sin(t * 0.7) * 0.04;
     }
-    if (spine) spine.rotation.z = Math.sin(t * 0.6) * 0.03;
+    if (spine) spine.rotation.z = pinned ? 0.08 : Math.sin(t * 0.6) * 0.03;
 
     for (const side of ["left", "right"] as const) {
       const sign = side === "left" ? 1 : -1;
@@ -393,21 +474,30 @@ export default function MonsterProceduralCharacter({
       const foot = bm[`${side}Foot`];
 
       if (arm) {
-        arm.rotation.z = (fallen ? sign * 0.65 : Math.sin(t * 0.8 + sign) * 0.12) + p * sign * 0.7;
-        arm.rotation.x = fallen ? 0 : -Math.sin(t + phaseOffset) * (moving ? 0.42 : 0.06);
+        arm.rotation.z = pinned
+          ? sign * 0.36
+          : (fallen ? sign * 0.65 : Math.sin(t * 0.8 + sign) * 0.12) + p * sign * 0.7;
+        arm.rotation.x = pinned
+          ? 0.28
+          : fallen
+            ? 0
+            : -Math.sin(t + phaseOffset) * (moving ? 0.42 : 0.06);
         const hideArm = missingArm && side === "right";
         arm.scale.setScalar(hideArm ? 0.0001 : 1);
         arm.visible = !hideArm;
       }
-      if (fore) fore.rotation.x = p * 0.4 - (moving ? 0.25 : 0.08);
+      if (fore) fore.rotation.x = pinned ? -0.35 : p * 0.4 - (moving ? 0.25 : 0.08);
       if (hip) {
-        hip.rotation.x = fallen ? 0 : Math.sin(t + phaseOffset) * (moving ? 0.62 : 0.08);
+        const hideLeg = missingLeg && side === "right";
+        hip.scale.setScalar(hideLeg ? 0.0001 : 1);
+        hip.visible = !hideLeg;
+        hip.rotation.x = pinned ? 0.16 : fallen ? 0 : Math.sin(t + phaseOffset) * (moving ? 0.62 : 0.08);
       }
       if (knee) {
-        knee.rotation.x = fallen ? 0 : moving ? Math.max(0, -Math.cos(t + phaseOffset)) * 0.78 : 0.06;
+        knee.rotation.x = pinned ? 0.28 : fallen ? 0 : moving ? Math.max(0, -Math.cos(t + phaseOffset)) * 0.78 : 0.06;
       }
       if (foot) {
-        foot.rotation.x = fallen ? 0 : moving ? Math.sin(t + phaseOffset) * 0.22 : 0;
+        foot.rotation.x = pinned ? 0.25 : fallen ? 0 : moving ? Math.sin(t + phaseOffset) * 0.22 : 0;
       }
     }
 
@@ -424,10 +514,24 @@ export default function MonsterProceduralCharacter({
     rig.node.opacity = 1 - dissolve;
     rig.node.transparent = dissolve > 0;
 
+    const baseScale: [number, number, number] =
+      kind === "brute"
+        ? [1.32, 1.28, 1.22]
+        : kind === "crawler"
+          ? [0.78, 0.56, 0.82]
+          : [1, 1, 1];
+
     if (root.current) {
-      root.current.position.y = fallen ? 0 : 0.56 + (moving ? Math.abs(Math.sin(t)) * 0.04 : 0);
+      const dissolveScale = 1 - dissolve * 0.25;
+      root.current.position.y = fallen || pinned
+        ? 0
+        : 0.56 * baseScale[1] + (moving ? Math.abs(Math.sin(t)) * 0.04 * baseScale[1] : 0);
       root.current.rotation.z = 0;
-      root.current.scale.setScalar(1 - dissolve * 0.25);
+      root.current.scale.set(
+        baseScale[0] * dissolveScale,
+        baseScale[1] * dissolveScale,
+        baseScale[2] * dissolveScale
+      );
     }
   });
 
@@ -438,7 +542,7 @@ export default function MonsterProceduralCharacter({
         kind === "brute"
           ? [1.32, 1.28, 1.22]
           : kind === "crawler"
-            ? [0.68, 0.72, 0.76]
+            ? [0.78, 0.56, 0.82]
             : [1, 1, 1]
       }
     >

@@ -114,6 +114,17 @@ function FleshyWall() {
     </group>)}
     {Array.from({length:30},(_,i)=><mesh key={i} position={[-26.2+i*0.84,4.2-(i%4)*0.14,-1.52]} rotation={[0,0,Math.PI]}><capsuleGeometry args={[0.085,0.42+(i%4)*0.1,5,10]}/><meshStandardMaterial color="#637638" roughness={0.22}/></mesh>)}
     {Array.from({length:20},(_,i)=><mesh key={i} position={[-26.0+i*1.25,0.12,-1.42]} scale={[0.78,0.12,0.44]}><sphereGeometry args={[0.5,16,10]}/><meshStandardMaterial color="#65783a" roughness={0.2}/></mesh>)}
+    {/* Único monstro grudado no início do muro da Fase 1: crawler sem uma perna e com cabeça quebrada */}
+    <group position={[-22.0,1.38,-1.52]} rotation={[0.08,0.06,-0.26]} scale={[1.08,1.02,0.42]}>
+      <MonsterProceduralCharacter kind="crawler" missingLeg brokenHead pinned moving={false} attackPulse={0}/>
+      <mesh position={[0,0.65,-0.18]}><circleGeometry args={[0.92,18]}/><meshStandardMaterial color="#4a0911" roughness={0.32}/></mesh>
+      <mesh position={[-0.22,0.68,0.14]} rotation={[0,0,0.42]} scale={[0.14,0.42,0.18]}><capsuleGeometry args={[0.16,0.45,5,8]}/><meshStandardMaterial color="#3e4d20" roughness={0.28}/></mesh>
+      <mesh position={[0.24,0.52,0.14]} rotation={[0,0,-0.48]} scale={[0.13,0.38,0.18]}><capsuleGeometry args={[0.15,0.42,5,8]}/><meshStandardMaterial color="#283819" roughness={0.3}/></mesh>
+    </group>
+    <mesh position={[-22.0,0.024,-1.35]} rotation={[-Math.PI/2,0,0]}>
+      <circleGeometry args={[0.68,16]}/>
+      <meshStandardMaterial color="#4e060e" roughness={0.24}/>
+    </mesh>
   </group>;
 }
 
@@ -711,11 +722,12 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     let hitPointOverride:{x:number;y:number;z:number}|null=null;
 
     const getMonsterHitMetrics=(e:EnemyState)=>{
-      const scaleY=e.kind==="brute"?1.15:e.kind==="crawler"?0.82:1.0;
-      const scaleX=e.kind==="brute"?1.18:e.kind==="crawler"?0.95:1.0;
-      const headY=e.y+0.56+1.85*scaleY;
-      const chestY=e.y+0.56+1.12*scaleY;
-      const pelvisY=e.y+0.56+0.45*scaleY;
+      const scaleY=e.kind==="brute"?1.28:e.kind==="crawler"?0.56:1.0;
+      const scaleX=e.kind==="brute"?1.32:e.kind==="crawler"?0.82:1.0;
+      const rootY=0.56*scaleY;
+      const headY=e.y+rootY+1.85*scaleY;
+      const chestY=e.y+rootY+1.12*scaleY;
+      const pelvisY=e.y+rootY+0.45*scaleY;
       return {scaleX,headY,chestY,pelvisY};
     };
 
@@ -815,7 +827,15 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       const e=bestEnemy;
       const distToRick=Math.hypot(e.x-px,e.z-pz);
       const {headY}=getMonsterHitMetrics(e);
-      if(isHeadshot){
+      if(e.kind==="brute"&&e.health>1){
+        e.health-=1;
+        e.vx=rayDir.x*3.4;
+        e.vz=rayDir.z*3.4;
+        e.fall=rayDir.x||rayDir.z||1;
+        spawnGore(hitX,hitY,hitZ,14,4.8,0);
+        hitMarkerKind.current=isHeadshot?"head":"body";
+        hitMarkerTimer.current=0.2;
+      }else if(isHeadshot){
         e.alive=false;
         e.headless=true;
         e.bodyState="falling";
@@ -830,7 +850,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
         hitMarkerKind.current="head";
         hitMarkerTimer.current=0.24;
       }else{
-        const dmg=distToRick<4.8?3:distToRick<8.5?2:1;
+        const dmg=e.kind==="crawler"?1:distToRick<4.8?3:distToRick<8.5?2:1;
         e.health-=dmg;
         e.vx=rayDir.x*3.4;
         e.vz=rayDir.z*3.4;
@@ -944,6 +964,15 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     if(!player.current)return;
     const e=nearest(2.8,1.8,-0.4);
     if(!e)return;
+    if(e.kind==="brute"&&e.health>1){
+      e.health-=1;
+      e.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
+      e.vx=attackDirection.current.x*3.6;
+      e.vz=attackDirection.current.z*3.6;
+      spawnGore(e.x,1.45,e.z,14,4.5);
+      setEnemyVersion(v=>v+1);
+      return;
+    }
 
     e.alive=false;
     e.grabTimer=0;
@@ -1032,6 +1061,15 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     if(!e)return;
 
     if(equipped==="machete"){
+      if(e.kind==="brute"&&e.health>1){
+        e.health-=1;
+        e.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
+        e.vx=attackDirection.current.x*3.2;
+        e.vz=attackDirection.current.z*3.2;
+        spawnGore(e.x,1.45,e.z,15,4.6);
+        setEnemyVersion(v=>v+1);
+        return;
+      }
       e.alive=false;
       e.grabTimer=0;
       e.bodyState="macheteFalling";
@@ -1286,20 +1324,29 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
           (shot.targetId!==null?enemies.current.find(en=>en.id===shot.targetId&&en.alive):undefined)??
           findShotgunTarget(px,pz);
         if(target){
-          target.alive=false;
-          target.headless=true;
-          target.bodyState="falling";
-          target.knocked=0.65;
-          target.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
-          target.vx=attackDirection.current.x*4.5;
-          target.vz=attackDirection.current.z*4.5;
-          const headHeight=target.kind==="crawler"?1.05:1.65;
-          // Shot blast originates at the aimed monster head and explodes it into gore + skull shards.
-          spawnGore(target.x,headHeight,target.z,28,6.2,11);
-          addBloodPool(target.x,target.z,1.15);
-          onKill();
-          onScore(100);
-          setEnemyVersion(v=>v+1);
+          if(target.kind==="brute"&&target.health>1){
+            target.health-=1;
+            target.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
+            target.vx=attackDirection.current.x*4.0;
+            target.vz=attackDirection.current.z*4.0;
+            spawnGore(target.x,1.6,target.z,18,5.2);
+            setEnemyVersion(v=>v+1);
+          }else{
+            target.alive=false;
+            target.headless=true;
+            target.bodyState="falling";
+            target.knocked=0.65;
+            target.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
+            target.vx=attackDirection.current.x*4.5;
+            target.vz=attackDirection.current.z*4.5;
+            const headHeight=target.kind==="crawler"?1.05:1.65;
+            // Shot blast originates at the aimed monster head and explodes it into gore + skull shards.
+            spawnGore(target.x,headHeight,target.z,28,6.2,11);
+            addBloodPool(target.x,target.z,1.15);
+            onKill();
+            onScore(100);
+            setEnemyVersion(v=>v+1);
+          }
         }
       }
     }
