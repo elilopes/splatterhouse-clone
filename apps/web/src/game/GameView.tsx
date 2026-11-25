@@ -676,56 +676,132 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     const muzzleY=py+1.34+Math.sin(tpsPitch.current)*0.4;
     const muzzleZ=pz+fwdZ*0.82+rightZ*0.28;
 
-    const rayHitSphere=(cx:number,cy:number,cz:number,radius:number)=>{
-      const ocX=rayOrigin.x-cx, ocY=rayOrigin.y-cy, ocZ=rayOrigin.z-cz;
-      const b=ocX*rayDir.x+ocY*rayDir.y+ocZ*rayDir.z;
+    const rayHitSphere=(oX:number,oY:number,oZ:number,dX:number,dY:number,dZ:number,cx:number,cy:number,cz:number,radius:number)=>{
+      const ocX=oX-cx, ocY=oY-cy, ocZ=oZ-cz;
+      const b=ocX*dX+ocY*dY+ocZ*dZ;
       const c=ocX*ocX+ocY*ocY+ocZ*ocZ-radius*radius;
       const disc=b*b-c;
       if(disc<0)return null;
-      const tHit=-b-Math.sqrt(disc);
-      return tHit>0.8?tHit:null;
+      const sqrtDisc=Math.sqrt(disc);
+      const t1=-b-sqrtDisc;
+      const t2=-b+sqrtDisc;
+      if(t2<=0.05)return null;
+      return Math.max(0.15,t1);
     };
 
-    let bestDist=44;
-    let bestEnemy:EnemyState|null=null;
-    let isHeadshot=false;
-
+    let wallDist=44;
     // Wall / floor / ceiling clip distance
     if(Math.abs(rayDir.x)>1e-4){
       const tWall=((rayDir.x>0?3.25:-3.25)-rayOrigin.x)/rayDir.x;
-      if(tWall>0.5&&tWall<bestDist)bestDist=tWall;
+      if(tWall>0.5&&tWall<wallDist)wallDist=tWall;
     }
     if(Math.abs(rayDir.z)>1e-4){
       const tEnd=((rayDir.z>0?30.1:-38.9)-rayOrigin.z)/rayDir.z;
-      if(tEnd>0.5&&tEnd<bestDist)bestDist=tEnd;
+      if(tEnd>0.5&&tEnd<wallDist)wallDist=tEnd;
     }
     if(Math.abs(rayDir.y)>1e-4){
       const tPlane=((rayDir.y>0?4.55:0.04)-rayOrigin.y)/rayDir.y;
-      if(tPlane>0.5&&tPlane<bestDist)bestDist=tPlane;
+      if(tPlane>0.5&&tPlane<wallDist)wallDist=tPlane;
     }
 
-    const adsBonus=tpsAimRef.current.ads?0.06:0.1;
+    let bestDist=wallDist+0.35;
+    let bestEnemy:EnemyState|null=null;
+    let isHeadshot=false;
+    let hitPointOverride:{x:number;y:number;z:number}|null=null;
+
+    const getMonsterHitMetrics=(e:EnemyState)=>{
+      const scaleY=e.kind==="brute"?1.15:e.kind==="crawler"?0.82:1.0;
+      const scaleX=e.kind==="brute"?1.18:e.kind==="crawler"?0.95:1.0;
+      const headY=e.y+0.56+1.85*scaleY;
+      const chestY=e.y+0.56+1.12*scaleY;
+      const pelvisY=e.y+0.56+0.45*scaleY;
+      return {scaleX,headY,chestY,pelvisY};
+    };
+
+    const adsBonus=tpsAimRef.current.ads?0.06:0.12;
     for(const e of enemies.current){
       if(!e.alive)continue;
-      const headY=e.y+(e.kind==="crawler"?1.05:1.65);
-      const torsoY=e.y+(e.kind==="crawler"?0.62:0.96);
-      const tHead=rayHitSphere(e.x,headY,e.z,(e.kind==="brute"?0.48:0.41)+adsBonus*0.5);
+      const distToRick=Math.hypot(e.x-px,e.z-pz);
+      const closeSpread=distToRick<4.5?0.16:0;
+      const {scaleX,headY,chestY,pelvisY}=getMonsterHitMetrics(e);
+      const tHead=rayHitSphere(rayOrigin.x,rayOrigin.y,rayOrigin.z,rayDir.x,rayDir.y,rayDir.z,e.x,headY,e.z,0.44*scaleX+adsBonus*0.5+closeSpread*0.5);
       if(tHead!==null&&tHead<bestDist){
         bestDist=tHead;
         bestEnemy=e;
         isHeadshot=true;
       }
-      const tTorso=rayHitSphere(e.x,torsoY,e.z,(e.kind==="brute"?0.64:0.54)+adsBonus);
-      if(tTorso!==null&&tTorso<bestDist){
-        bestDist=tTorso;
+      const tChest=rayHitSphere(rayOrigin.x,rayOrigin.y,rayOrigin.z,rayDir.x,rayDir.y,rayDir.z,e.x,chestY,e.z,0.62*scaleX+adsBonus+closeSpread);
+      if(tChest!==null&&tChest<bestDist){
+        bestDist=tChest;
+        bestEnemy=e;
+        isHeadshot=false;
+      }
+      const tPelvis=rayHitSphere(rayOrigin.x,rayOrigin.y,rayOrigin.z,rayDir.x,rayDir.y,rayDir.z,e.x,pelvisY,e.z,0.56*scaleX+adsBonus+closeSpread);
+      if(tPelvis!==null&&tPelvis<bestDist){
+        bestDist=tPelvis;
         bestEnemy=e;
         isHeadshot=false;
       }
     }
 
-    const hitX=rayOrigin.x+rayDir.x*bestDist;
-    const hitY=rayOrigin.y+rayDir.y*bestDist;
-    const hitZ=rayOrigin.z+rayDir.z*bestDist;
+    // Over-the-shoulder parallax & point-blank buckshot cone fallback for monsters close to Rick
+    if(!bestEnemy){
+      const aimLen=Math.min(wallDist,16);
+      const aimX=rayOrigin.x+rayDir.x*aimLen;
+      const aimY=rayOrigin.y+rayDir.y*aimLen;
+      const aimZ=rayOrigin.z+rayDir.z*aimLen;
+      const muzDir=new THREE.Vector3(aimX-px,aimY-(py+1.42),aimZ-pz).normalize();
+      const fwdDir=new THREE.Vector3(fwdX,Math.sin(tpsPitch.current),fwdZ).normalize();
+
+      let bestMuzzleT=6.5;
+      for(const e of enemies.current){
+        if(!e.alive)continue;
+        const distToRick=Math.hypot(e.x-px,e.z-pz);
+        if(distToRick>6.2)continue;
+        const {scaleX,headY,chestY,pelvisY}=getMonsterHitMetrics(e);
+        const rBody=0.68*scaleX+adsBonus+0.18;
+        for(const [cy,rad,head] of [[headY,0.48*scaleX+adsBonus,true],[chestY,rBody,false],[pelvisY,rBody*0.92,false]] as const){
+          const tMuz=rayHitSphere(px,py+1.42,pz,muzDir.x,muzDir.y,muzDir.z,e.x,cy,e.z,rad);
+          if(tMuz!==null&&tMuz<bestMuzzleT){
+            bestMuzzleT=tMuz;
+            bestEnemy=e;
+            isHeadshot=head;
+            hitPointOverride={x:px+muzDir.x*tMuz,y:py+1.42+muzDir.y*tMuz,z:pz+muzDir.z*tMuz};
+          }
+          const tFwd=rayHitSphere(px,py+1.42,pz,fwdDir.x,fwdDir.y,fwdDir.z,e.x,cy,e.z,rad);
+          if(tFwd!==null&&tFwd<bestMuzzleT){
+            bestMuzzleT=tFwd;
+            bestEnemy=e;
+            isHeadshot=head;
+            hitPointOverride={x:px+fwdDir.x*tFwd,y:py+1.42+fwdDir.y*tFwd,z:pz+fwdDir.z*tFwd};
+          }
+        }
+      }
+
+      if(!bestEnemy){
+        let closestPointBlank=4.2;
+        for(const e of enemies.current){
+          if(!e.alive)continue;
+          const dx=e.x-px, dz=e.z-pz;
+          const dist=Math.hypot(dx,dz);
+          if(dist>4.2)continue;
+          const dot=dist<0.25?1:(dx*fwdX+dz*fwdZ)/dist;
+          const inCone=(dist<=2.35&&dot>=0.35)||(dist<=4.2&&dot>=0.78);
+          if(inCone&&dist<closestPointBlank){
+            closestPointBlank=dist;
+            bestEnemy=e;
+            isHeadshot=false;
+            const {chestY}=getMonsterHitMetrics(e);
+            hitPointOverride={x:e.x,y:chestY,z:e.z};
+          }
+        }
+      }
+    }
+
+    const finalDist=bestEnemy?Math.min(bestDist,wallDist+0.35):wallDist;
+    const hitX=hitPointOverride?hitPointOverride.x:rayOrigin.x+rayDir.x*finalDist;
+    const hitY=hitPointOverride?hitPointOverride.y:rayOrigin.y+rayDir.y*finalDist;
+    const hitZ=hitPointOverride?hitPointOverride.z:rayOrigin.z+rayDir.z*finalDist;
 
     tracers.current.push({
       id:nextEffectId.current++,
@@ -737,6 +813,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     if(bestEnemy){
       const e=bestEnemy;
       const distToRick=Math.hypot(e.x-px,e.z-pz);
+      const {headY}=getMonsterHitMetrics(e);
       if(isHeadshot){
         e.alive=false;
         e.headless=true;
@@ -745,14 +822,14 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
         e.fall=rayDir.x||rayDir.z||1;
         e.vx=rayDir.x*4.2;
         e.vz=rayDir.z*4.2;
-        spawnGore(e.x,e.kind==="crawler"?1.05:1.65,e.z,26,6.2,10);
+        spawnGore(e.x,headY,e.z,26,6.2,10);
         addBloodPool(e.x,e.z,1.15);
         onKill();
         onScore(150);
         hitMarkerKind.current="head";
         hitMarkerTimer.current=0.24;
       }else{
-        const dmg=distToRick<5.5?2:1;
+        const dmg=distToRick<4.8?3:distToRick<8.5?2:1;
         e.health-=dmg;
         e.vx=rayDir.x*3.4;
         e.vz=rayDir.z*3.4;
