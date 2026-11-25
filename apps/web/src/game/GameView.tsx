@@ -19,7 +19,7 @@ type Props = {
   initialStage?:1|2|3;
   onPhase3Clear?:()=>void;
 };
-type WeaponId = "pipe" | "machete" | "shotgun";
+type WeaponId = "sickle" | "pipe" | "machete" | "shotgun";
 type EnemyKind = "crawler" | "brute" | "spitter";
 type BodyState = "alive" | "wallFlying" | "wallStuck" | "falling" | "fallen" | "macheteFalling" | "macheteMelting" | "grabLift" | "grabThrown" | "grabFallen" | "grabMelting" | "pipeSlam" | "gone";
 type EnemyState = {
@@ -474,7 +474,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   const macheteAttackVariant=useRef<"head"|"arm">("head");
   const [phase,setPhase]=useState<1|2|3>(initialStage);
   const [initialEnemiesVisible,setInitialEnemiesVisible]=useState(false);
-  const [equipped,setEquipped]=useState<WeaponId|null>(null);
+  const [equipped,setEquipped]=useState<WeaponId|null>(initialStage===1?"sickle":null);
   const facing=useRef(1);
   const attackDirection=useRef({x:1,z:0});
   const upperDeckAccess=useRef(false);
@@ -627,14 +627,14 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     return -2.15; // mansion facade
   };
 
-  const spawnGore=(x:number,y:number,z:number,count:number,spread=4.2,skullCount=0)=>{
+  const spawnGore=(x:number,y:number,z:number,count:number,spread=4.2,skullCount=0,style:"sickle"|"pipe"|"machete"|"shotgun"|"generic"="generic")=>{
     const enhancedCount=Math.ceil(count*1.55);
     for(let i=0;i<enhancedCount;i++){
       const angle=(i/count)*Math.PI*2+Math.random()*0.4;
       const spd=1.6+Math.random()*spread;
       effects.current.push({
         id:nextEffectId.current++,kind:"gore",x,y,z,
-        vx:Math.cos(angle)*spd,vy:1.6+Math.random()*4.4,vz:Math.sin(angle)*spd*0.65,
+        vx:Math.cos(finalAngle)*spd,vy:(style==="shotgun"?2.8:style==="machete"?2.2:1.6)+Math.random()*(style==="shotgun"?6:4.4),vz:Math.sin(finalAngle)*spd*(style==="pipe"?1.05:0.65),
         size:0.65+Math.random()*1.15,age:0
       });
     }
@@ -855,7 +855,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
         e.vx=rayDir.x*3.4;
         e.vz=rayDir.z*3.4;
         e.fall=rayDir.x||rayDir.z||1;
-        spawnGore(hitX,hitY,hitZ,e.health<=0?20:11,4.6,0);
+        spawnGore(hitX,hitY,hitZ,e.health<=0?20:11,4.6,0,"shotgun");
         hitMarkerKind.current="body";
         hitMarkerTimer.current=0.18;
         if(e.health<=0){
@@ -969,7 +969,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       e.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
       e.vx=attackDirection.current.x*3.6;
       e.vz=attackDirection.current.z*3.6;
-      spawnGore(e.x,1.45,e.z,14,4.5);
+      spawnGore(e.x,1.45,e.z,14,4.5,0,"pipe");
       setEnemyVersion(v=>v+1);
       return;
     }
@@ -986,13 +986,13 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       e.vy=5.8;
       e.vz=attackDirection.current.z*2.8-(phase===1?17.5:0);
       e.stickRot=(Math.random()-0.5)*0.5;
-      spawnGore(e.x,1.25,e.z,18,5.4);
+      spawnGore(e.x,1.25,e.z,18,5.4,0,"pipe");
       addBloodPool(e.x,e.z,0.82);
     }else{
       // Overhead pipe strike: the monster is driven down into the ground.
       e.bodyState="pipeSlam";
       e.y=0.38;
-      spawnGore(e.x,1.0,e.z,20,4.8);
+      spawnGore(e.x,1.0,e.z,20,4.8,0,"pipe");
       addBloodPool(e.x,e.z,0.95);
     }
     onKill();
@@ -1029,7 +1029,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     }
     attackCooldown.current=equipped==="shotgun"?0.62:equipped==="machete"?0.56:0.42;
     motion.current.attackTime=equipped==="shotgun"?0.42:equipped==="machete"?0.56:0.36;
-    const macheteStyle=equipped==="machete"?macheteAttackVariant.current:null;
+    const macheteStyle=equipped==="machete"?macheteAttackVariant.current:equipped==="sickle"?"head":null;
     if(macheteStyle)macheteAttackVariant.current=macheteStyle==="head"?"arm":"head";
     motion.current.attackStyle=macheteStyle==="head"?"macheteHead":macheteStyle==="arm"?"macheteArm":null;
     motion.current.attackProgress=0;
@@ -1060,7 +1060,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     const e=nearest(equipped==="machete"?2.35:1.65,2.0,equipped==="machete"?-0.35:-0.2);
     if(!e)return;
 
-    if(equipped==="machete"){
+    if(equipped==="machete"||equipped==="sickle"){
       if(e.kind==="brute"&&e.health>1){
         e.health-=1;
         e.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
@@ -1091,7 +1091,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
           stuck:false,
           targetZ:targetWallZ(e.x),
         });
-        spawnGore(e.x,e.kind==="crawler"?1.05:1.65,e.z,22,5.2);
+        spawnGore(e.x,e.kind==="crawler"?1.05:1.65,e.z,22,5.2,0,equipped==="sickle"?"sickle":"machete");
       }else{
         // The alternate cut removes the creature's right arm and sends it
         // backward in a spinning ballistic arc from the shoulder to the floor.
@@ -1110,7 +1110,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
           size:1,
           age:0
         });
-        spawnGore(e.x+0.42,e.kind==="crawler"?0.9:1.18,e.z,16,4.8);
+        spawnGore(e.x+0.42,e.kind==="crawler"?0.9:1.18,e.z,16,4.8,0,"machete");
       }
       addBloodPool(e.x,e.z,1.05);
       onKill();
@@ -2034,7 +2034,7 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
       tpsAimRef.current.ads=false;
       lastMouseRef.current=null;
     };
-  },[isPhase3]);
+  },[isPhase3,equipped]);
 
   const joystickRef=useRef<HTMLDivElement>(null);
   const joystickInput=useRef({x:0,y:0,pointerId:-1});
