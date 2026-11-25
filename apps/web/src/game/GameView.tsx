@@ -47,7 +47,7 @@ type TpsHudState = {
 };
 
 const makeEnemy = (id:number, x:number, z:number, kind:EnemyKind, animation:number, activated=false): EnemyState => ({
-  id, x, y:0, z, health:kind==="brute"?3:2, alive:true, kind, knocked:0,
+  id, x, y:0, z, health:kind==="crawler"?1:2, alive:true, kind, knocked:0,
   vx:0, vy:0, vz:0, fall:0, animation, activated, bodyState:"alive", stickRot:0, targetZ:-1.72, headless:false, severedArm:false, grabTimer:0, spitCooldown:1.1+Math.random()*1.4
 });
 
@@ -623,7 +623,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       effects.current.push({
         id:nextEffectId.current++,kind:"gore",x,y,z,
         vx:Math.cos(angle)*spd,vy:1.6+Math.random()*4.4,vz:Math.sin(angle)*spd*0.65,
-        size:0.75+Math.random()*0.85,age:0
+        size:0.65+Math.random()*1.15,age:0
       });
     }
     for(let i=0;i<skullCount;i++){
@@ -1870,7 +1870,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
         <mesh position={[0,0.37,0]} scale={[0.16,0.13,0.15]}><sphereGeometry args={[1,14,10]}/><meshStandardMaterial color="#64212a" roughness={0.55}/></mesh>
         <mesh position={[0,-0.18,0]} scale={[0.14,0.13,0.13]}><sphereGeometry args={[1,14,10]}/><meshStandardMaterial color="#a05c43" roughness={0.72}/></mesh>
         <mesh position={[0,-0.29,0]} rotation={[0,0,-0.12]}><capsuleGeometry args={[0.075,0.16,5,8]}/><meshStandardMaterial color="#a05c43" roughness={0.72}/></mesh>
-      </group>:fx.kind==="spark"?<mesh scale={fx.size*0.8}><boxGeometry args={[0.08,0.08,0.08]}/><meshBasicMaterial color="#ffcf6b"/></mesh>:<mesh scale={fx.size}><icosahedronGeometry args={[0.11,0]}/><meshStandardMaterial color="#7e0c18" roughness={0.35}/></mesh>}
+      </group>:fx.kind==="spark"?<mesh scale={fx.size*0.8}><boxGeometry args={[0.08,0.08,0.08]}/><meshBasicMaterial color="#ffcf6b"/></mesh>:<mesh scale={fx.size} rotation={[fx.age*3.1,fx.age*2.4,fx.age*1.8]}><sphereGeometry args={[0.12,14,10]}/><meshStandardMaterial color={fx.id%3===0?"#9e101c":fx.id%3===1?"#68030c":"#b71e28"} roughness={0.12} metalness={0.03}/></mesh>}
     </group>)}
 
     {tracers.current.map((tr)=>{
