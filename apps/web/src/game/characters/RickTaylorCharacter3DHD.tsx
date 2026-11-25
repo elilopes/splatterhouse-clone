@@ -22,7 +22,7 @@ import {
 } from "./parametricHead3DMM";
 
 
-export type RickWeaponId = "pipe" | "machete" | "shotgun";
+export type RickWeaponId = "sickle" | "pipe" | "machete" | "shotgun";
 
 export type RickPipeAttackStyle = "bat" | "overhead" | "macheteHead" | "macheteArm";
 
@@ -1148,7 +1148,7 @@ function HeldWeaponMesh({
   id: RickWeaponId;
   muzzleRef: React.RefObject<THREE.Group | null>;
 }) {
-  if (id === "pipe") {
+  if (id === "sickle") {\n    return (\n      <group position={[0, 0, -0.28]} rotation={[0, 0, -0.12]}>\n        <mesh position={[0, 0, 0.22]} rotation={[Math.PI / 2, 0, 0]} castShadow>\n          <cylinderGeometry args={[0.035, 0.035, 0.52, 10]} />\n          <meshStandardMaterial color="#513020" roughness={0.86} />\n        </mesh>\n        <mesh position={[0, 0.02, -0.18]} rotation={[0, 0, -0.42]} castShadow>\n          <torusGeometry args={[0.34, 0.035, 10, 28, Math.PI * 0.82]} />\n          <meshStandardMaterial color="#c7ccd0" metalness={0.92} roughness={0.2} />\n        </mesh>\n        <mesh position={[-0.13, 0.13, -0.18]} rotation={[0, 0, -0.42]} castShadow>\n          <coneGeometry args={[0.055, 0.22, 10]} />\n          <meshStandardMaterial color="#dce0df" metalness={0.9} roughness={0.18} />\n        </mesh>\n      </group>\n    );\n  }\n  if (id === "pipe") {
     return (
       <group position={[0, 0, -0.35]}>
         <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
