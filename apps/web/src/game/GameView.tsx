@@ -1066,7 +1066,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
         e.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
         e.vx=attackDirection.current.x*3.2;
         e.vz=attackDirection.current.z*3.2;
-        spawnGore(e.x,1.45,e.z,15,4.6);
+        spawnGore(e.x,1.45,e.z,15,4.6,0,equipped==="sickle"?"sickle":"machete");
         setEnemyVersion(v=>v+1);
         return;
       }
@@ -2021,7 +2021,7 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
   useEffect(()=>{
     if(!isPhase3)return;
     const onKeyDown=(e:KeyboardEvent)=>{
-      if(e.key==="Shift")tpsAimRef.current.ads=true;
+      if(e.key.toLowerCase()==="v"){const next=equipped==="shotgun"?"sickle":"shotgun";setEquipped(next);motion.current.weapon=next;}\n      if(e.key==="Shift")tpsAimRef.current.ads=true;
     };
     const onKeyUp=(e:KeyboardEvent)=>{
       if(e.key==="Shift")tpsAimRef.current.ads=false;
