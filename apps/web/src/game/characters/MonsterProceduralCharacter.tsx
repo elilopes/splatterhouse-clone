@@ -436,9 +436,9 @@ export default function MonsterProceduralCharacter({
       ref={root}
       scale={
         kind === "brute"
-          ? [1.18, 1.15, 1.12]
+          ? [1.32, 1.28, 1.22]
           : kind === "crawler"
-            ? [0.95, 0.82, 1]
+            ? [0.68, 0.72, 0.76]
             : [1, 1, 1]
       }
     >
