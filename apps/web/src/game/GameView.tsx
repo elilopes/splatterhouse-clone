@@ -88,7 +88,8 @@ type WorldProps = Omit<Props, "graphicsQuality"> & {
   tpsAimRef:React.MutableRefObject<TpsAimInput>;
   onTpsHudUpdate:(hud:TpsHudState)=>void;
   onRickVisible:()=>void;
-  onStageLoading:()=>void;\n  spendEnergy:(amount:number)=>boolean;
+  onStageLoading:()=>void;
+  spendEnergy:(amount:number)=>boolean;
 };
 type PipeAttackStyle = "bat" | "overhead";
 type PipeCombo = { steps:PipeAttackStyle[]; elapsed:number; stepIndex:number; hit:boolean };
@@ -1201,7 +1202,8 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   };
   const doJump=()=>{if(!grounded.current)return;grounded.current=false;jumpVelocity.current=6.2;};
   const doSuperJump=()=>{if(!player.current||!grounded.current||specialJumpCooldown.current>0||phase===3||!spendEnergy(34))return;specialJumpActive.current=true;specialJumpLanding.current=false;grounded.current=false;specialJumpCooldown.current=0.8;motion.current.specialMove="superJump";jumpVelocity.current=Math.sqrt(2*16.5*2);motion.current.jumpHeight=0;const d=attackDirection.current;player.current.position.x+=d.x*3;player.current.position.z+=d.z*3;};
-  const doEscorrao=()=>{if(!player.current||escorraoCooldown.current>0||phase===3||!spendEnergy(67))return;escorraoCooldown.current=1;motion.current.specialMove="escorrao";motion.current.slideTime=0.42;const d=attackDirection.current;player.current.position.x+=d.x;player.current.position.z+=d.z;let hits=0;for(const e of enemies.current){if(!e.alive)continue;const dist=Math.hypot(e.x-player.current.position.x,e.z-player.current.position.z);if(dist>1.65)continue;hits++;e.vx=d.x*5.2;e.vz=d.z*5.2;e.vy=1;e.fall=d.x||d.z||facing.current;e.knocked=0.85;if(e.kind==="brute"&&e.health>1)e.health-=1;else{e.alive=false;e.bodyState="falling";e.knocked=0.65;addBloodPool(e.x,e.z,0.85);spawnGore(e.x,0.55,e.z,14,4.5);onKill();onScore(100);}}if(hits)setEnemyVersion(v=>v+1);};\n  const doSlide=()=>{
+  const doEscorrao=()=>{if(!player.current||escorraoCooldown.current>0||phase===3||!spendEnergy(67))return;escorraoCooldown.current=1;motion.current.specialMove="escorrao";motion.current.slideTime=0.42;const d=attackDirection.current;player.current.position.x+=d.x;player.current.position.z+=d.z;let hits=0;for(const e of enemies.current){if(!e.alive)continue;const dist=Math.hypot(e.x-player.current.position.x,e.z-player.current.position.z);if(dist>1.65)continue;hits++;e.vx=d.x*5.2;e.vz=d.z*5.2;e.vy=1;e.fall=d.x||d.z||facing.current;e.knocked=0.85;if(e.kind==="brute"&&e.health>1)e.health-=1;else{e.alive=false;e.bodyState="falling";e.knocked=0.65;addBloodPool(e.x,e.z,0.85);spawnGore(e.x,0.55,e.z,14,4.5);onKill();onScore(100);}}if(hits)setEnemyVersion(v=>v+1);};
+  const doSlide=()=>{
     if(slideCooldown.current>0||!player.current||phase===3)return;
     slideCooldown.current=1.05;motion.current.slideTime=0.58;motion.current.specialMove="slide";
     const dir=attackDirection.current;
@@ -2052,7 +2054,8 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
   const lookTouchRef=useRef<{id:number;x:number;y:number}|null>(null);
   const [tpsHud,setTpsHud]=useState<TpsHudState>({ammo:TPS_MAG_SIZE,maxAmmo:TPS_MAG_SIZE,reloading:false,ads:false,hitMarker:"none"});
   const [energy,setEnergy]=useState(0);const energyRef=useRef(0);
-  const handleKill=()=>{energyRef.current=Math.min(100,energyRef.current+12);setEnergy(energyRef.current);onKill();};\n  const spendEnergy=(amount:number)=>{if(energyRef.current<amount)return false;energyRef.current-=amount;setEnergy(energyRef.current);return true;};
+  const handleKill=()=>{energyRef.current=Math.min(100,energyRef.current+12);setEnergy(energyRef.current);onKill();};
+  const spendEnergy=(amount:number)=>{if(energyRef.current<amount)return false;energyRef.current-=amount;setEnergy(energyRef.current);return true;};
 
   const setHDZoom=(next:number)=>{
     const clamped=Math.round(THREE.MathUtils.clamp(next,0.55,2.4)*100)/100;
