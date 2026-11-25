@@ -21,7 +21,7 @@ type Props = {
 };
 type WeaponId = "sickle" | "pipe" | "machete" | "shotgun";
 type EnemyKind = "crawler" | "brute" | "spitter";
-type BodyState = "alive" | "wallFlying" | "wallStuck" | "falling" | "fallen" | "macheteFalling" | "macheteMelting" | "grabLift" | "grabThrown" | "grabFallen" | "grabMelting" | "pipeSlam" | "gone";
+type BodyState = "alive" | "wallFlying" | "wallStuck" | "falling" | "fallen" | "macheteFalling" | "macheteMelting" | "grabLift" | "grabThrown" | "grabFallen" | "grabMelting" | "grabInvertLift" | "grabInvertSlam" | "grabInvertFallen" | "pipeSlam" | "gone";
 type EnemyState = {
   id:number; x:number; y:number; z:number; health:number; alive:boolean; kind:EnemyKind;
   knocked:number; vx:number; vy:number; vz:number; fall:number; animation:number;
@@ -78,7 +78,7 @@ const initialPickups: PickupState[] = [
 ];
 
 type WorldControls = {
-  horizontal:number; depth:number; attack:boolean; grab:boolean; jump:boolean; pickup:boolean; slide:boolean; sweep:boolean; superJump:boolean; escorrao:boolean;
+  horizontal:number; depth:number; attack:boolean; grab:boolean; jump:boolean; pickup:boolean; slide:boolean; sweep:boolean; superJump:boolean; escorrao:boolean; headKick:boolean;
 };
 type TpsAimInput = { yawDelta:number; pitchDelta:number; ads:boolean; reload:boolean };
 type WorldProps = Omit<Props, "graphicsQuality"> & {
@@ -522,10 +522,11 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   const rickReadyFrames=useRef(0);
   const enemies=useRef<EnemyState[]>(initialStage===1?initialEnemies.map(e=>({...e})):[]);
   const pickups=useRef<PickupState[]>(initialPickups.map(p=>({...p})));
-  const motion=useRef<RickMotion>({moving:false,attackTime:0,attackStyle:null,attackProgress:0,grabTime:0,jumpHeight:0,weapon:null,slideTime:0,specialMove:null});
+  const motion=useRef<RickMotion>({moving:false,attackTime:0,attackStyle:null,attackProgress:0,grabTime:0,jumpHeight:0,weapon:null,slideTime:0,specialMove:null,superJumpTuck:false,grabStyle:null});
   const pipeCombo=useRef<PipeCombo|null>(null);
   const pendingShotgun=useRef<{timer:number;targetId:number|null}|null>(null);
   const macheteAttackVariant=useRef<"head"|"arm">("head");
+  const grabVariant=useRef<"throw"|"piledriver">("throw");
   const [phase,setPhase]=useState<1|2|3>(initialStage);
   const [initialEnemiesVisible,setInitialEnemiesVisible]=useState(false);
   const [equipped,setEquipped]=useState<WeaponId|null>(initialStage===1?"sickle":null);
@@ -534,7 +535,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   const upperDeckAccess=useRef(false);
   const attackCooldown=useRef(0),grabCooldown=useRef(0),slideCooldown=useRef(0),jumpVelocity=useRef(0),grounded=useRef(true);const specialJumpActive=useRef(false),specialJumpVel=useRef({x:0,z:0}),specialJumpCooldown=useRef(0),escorraoCooldown=useRef(0),escorraoVel=useRef({x:0,z:0}),escorraoHitIds=useRef(new Set<number>());
   const [,setEnemyVersion]=useState(0);
-  const lastActions=useRef({attack:false,grab:false,jump:false,pickup:false,slide:false,sweep:false,superJump:false,escorrao:false});
+  const lastActions=useRef({attack:false,grab:false,jump:false,pickup:false,slide:false,sweep:false,superJump:false,escorrao:false,headKick:false});
   const keys=useRef(new Set<string>());
 
   // Phase 3 Uncharted TPS states
@@ -574,6 +575,8 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     escorraoVel.current={x:0,z:0};
     escorraoHitIds.current.clear();
     motion.current.jumpHeight=0;
+    motion.current.superJumpTuck=false;
+    motion.current.grabStyle=null;
     spitProjectiles.current=[];
     spitSplashes.current=[];
     effects.current=[];
@@ -624,6 +627,8 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     escorraoVel.current={x:0,z:0};
     escorraoHitIds.current.clear();
     motion.current.jumpHeight=0;
+    motion.current.superJumpTuck=false;
+    motion.current.grabStyle=null;
     motion.current.weapon="shotgun";
     setEquipped("shotgun");
     spitProjectiles.current=[];
@@ -1195,10 +1200,14 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     if(grabCooldown.current>0||!player.current)return;
     const e=nearest(1.95,1.65,-0.25);
     if(!e)return;
-    grabCooldown.current=1.35;
-    motion.current.grabTime=1.35;
-    // Hold the enemy in front of Rick before applying the backward throw impulse.
-    e.bodyState="grabLift";
+    const variant=grabVariant.current;
+    grabVariant.current=variant==="throw"?"piledriver":"throw";
+    const dur=variant==="piledriver"?1.65:1.35;
+    grabCooldown.current=dur;
+    motion.current.grabTime=dur;
+    motion.current.grabStyle=variant;
+    // Hold the enemy in front of Rick before throw or piledriver inversion.
+    e.bodyState=variant==="piledriver"?"grabInvertLift":"grabLift";
     e.alive=false;
     e.grabTimer=0;
     e.fall=-(attackDirection.current.x||attackDirection.current.z||facing.current);
@@ -1209,7 +1218,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     setEnemyVersion(v=>v+1);
   };
   const doJump=()=>{if(!grounded.current)return;grounded.current=false;jumpVelocity.current=6.2;};
-  const doSuperJump=()=>{if(!player.current||!grounded.current||specialJumpCooldown.current>0||phase===3||!spendEnergy(34))return;specialJumpActive.current=true;grounded.current=false;specialJumpCooldown.current=0.8;motion.current.specialMove="superJump";jumpVelocity.current=Math.sqrt(2*5.2*3.5);motion.current.jumpHeight=0;const d=attackDirection.current;specialJumpVel.current={x:d.x*1.55,z:d.z*1.55};};
+  const doSuperJump=()=>{if(!player.current||!grounded.current||specialJumpCooldown.current>0||phase===3||!spendEnergy(34))return;specialJumpActive.current=true;grounded.current=false;specialJumpCooldown.current=0.8;motion.current.specialMove="superJump";motion.current.superJumpTuck=false;jumpVelocity.current=Math.sqrt(2*5.2*3.5);motion.current.jumpHeight=0;const d=attackDirection.current;specialJumpVel.current={x:d.x*1.55,z:d.z*1.55};};
   const doEscorrao=()=>{if(!player.current||escorraoCooldown.current>0||phase===3||!spendEnergy(67))return;escorraoCooldown.current=1.05;motion.current.specialMove="escorrao";motion.current.slideTime=0.72;escorraoHitIds.current.clear();const d=attackDirection.current;escorraoVel.current={x:d.x*8.2,z:d.z*8.2};};
   const doSlide=()=>{
     if(slideCooldown.current>0||!player.current||phase===3)return;
@@ -1228,9 +1237,54 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     target.vx=attackDirection.current.x*3.6;target.vz=attackDirection.current.z*3.6;target.vy=1.2;
     spawnGore(target.x,0.55,target.z,20,5.0);addBloodPool(target.x,target.z,0.85);onKill();onScore(100);setEnemyVersion(v=>v+1);
   };
+  const doHeadKick=()=>{
+    if(attackCooldown.current>0||phase===3)return;
+    attackCooldown.current=0.56;
+    motion.current.attackTime=0.52;
+    motion.current.attackStyle=null;
+    motion.current.attackProgress=0;
+    motion.current.specialMove="headKick";
+    const target=nearest(2.15,1.35,-0.2);
+    if(!target)return;
+    const headH=target.kind==="crawler"?1.05:target.kind==="brute"?1.95:1.65;
+    if(target.kind==="brute"&&target.health>1){
+      target.health-=1;
+      target.vx=attackDirection.current.x*4.4;
+      target.vz=attackDirection.current.z*4.4;
+      target.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
+      spawnGore(target.x,headH,target.z,16,5.0);
+      setEnemyVersion(v=>v+1);
+      return;
+    }
+    target.alive=false;
+    target.headless=true;
+    target.bodyState="falling";
+    target.fall=attackDirection.current.x||attackDirection.current.z||facing.current;
+    target.vx=attackDirection.current.x*3.4;
+    target.vz=attackDirection.current.z*3.4;
+    target.vy=1.0;
+    severedHeads.current.push({
+      id:nextEffectId.current++,
+      kind:target.kind,
+      x:target.x,
+      y:headH,
+      z:target.z,
+      vx:attackDirection.current.x*4.8,
+      vy:5.2,
+      vz:attackDirection.current.z*4.8-(phase===1?13.5:0),
+      rotZ:(Math.random()-0.5)*0.8,
+      stuck:false,
+      targetZ:targetWallZ(target.x),
+    });
+    spawnGore(target.x,headH,target.z,24,5.6,10);
+    addBloodPool(target.x,target.z,1.05);
+    onKill();
+    onScore(150);
+    setEnemyVersion(v=>v+1);
+  };
 
   useEffect(()=>{
-    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();keys.current.add(k);if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="k"&&phase!==3)doGrab();if(k===" "||k==="l")doJump();if(k==="c")doSlide();if(k==="z")doSpecialStrike("sweep");if(k==="b")doSuperJump();if(k==="n")doEscorrao();if(k==="e"&&phase===1)doPickup();if(k==="v"&&phase===3){const next=equipped==="shotgun"?"sickle":"shotgun";setEquipped(next);motion.current.weapon=next;}if(k==="r"&&phase===3&&tpsReloadTimer.current<=0&&tpsAmmo.current<TPS_MAG_SIZE){tpsReloadTimer.current=1.05;}};
+    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();keys.current.add(k);if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="k"&&phase!==3)doGrab();if(k===" "||k==="l")doJump();if(k==="c")doSlide();if(k==="z")doSpecialStrike("sweep");if(k==="f")doHeadKick();if(k==="b")doSuperJump();if(k==="n")doEscorrao();if(k==="e"&&phase===1)doPickup();if(k==="v"&&phase===3){const next=equipped==="shotgun"?"sickle":"shotgun";setEquipped(next);motion.current.weapon=next;}if(k==="r"&&phase===3&&tpsReloadTimer.current<=0&&tpsAmmo.current<TPS_MAG_SIZE){tpsReloadTimer.current=1.05;}};
     const up=(e:KeyboardEvent)=>keys.current.delete(e.key.toLowerCase());
     window.addEventListener("keydown",down);window.addEventListener("keyup",up);return()=>{window.removeEventListener("keydown",down);window.removeEventListener("keyup",up);};
   });
@@ -1254,12 +1308,12 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     const c=controls.current;const prior=lastActions.current;
     const attackHeld=c.attack||keys.current.has("j");
     if(attackHeld&&!prior.attack)doAttack();if(c.grab&&!prior.grab)doGrab();if(c.jump&&!prior.jump)doJump();if(c.pickup&&!prior.pickup)doPickup();
-    if(c.slide&&!prior.slide)doSlide();if(c.sweep&&!prior.sweep)doSpecialStrike("sweep");if(c.superJump&&!prior.superJump)doSuperJump();if(c.escorrao&&!prior.escorrao)doEscorrao();
-    lastActions.current={attack:attackHeld,grab:c.grab,jump:c.jump,pickup:c.pickup,slide:c.slide,sweep:c.sweep,superJump:c.superJump,escorrao:c.escorrao};
+    if(c.slide&&!prior.slide)doSlide();if(c.sweep&&!prior.sweep)doSpecialStrike("sweep");if(c.headKick&&!prior.headKick)doHeadKick();if(c.superJump&&!prior.superJump)doSuperJump();if(c.escorrao&&!prior.escorrao)doEscorrao();
+    lastActions.current={attack:attackHeld,grab:c.grab,jump:c.jump,pickup:c.pickup,slide:c.slide,sweep:c.sweep,superJump:c.superJump,escorrao:c.escorrao,headKick:c.headKick};
     attackCooldown.current=Math.max(0,attackCooldown.current-dt);grabCooldown.current=Math.max(0,grabCooldown.current-dt);slideCooldown.current=Math.max(0,slideCooldown.current-dt);
     motion.current.slideTime=Math.max(0,(motion.current.slideTime??0)-dt);specialJumpCooldown.current=Math.max(0,specialJumpCooldown.current-dt);escorraoCooldown.current=Math.max(0,escorraoCooldown.current-dt);
     if(motion.current.slideTime<=0&&(motion.current.specialMove==="slide"||motion.current.specialMove==="escorrao"||motion.current.specialMove==="impact")){if(motion.current.specialMove==="escorrao"){escorraoVel.current={x:0,z:0};escorraoHitIds.current.clear();}motion.current.specialMove=null;}
-    if(motion.current.attackTime<=0&&motion.current.specialMove==="sweep")motion.current.specialMove=null;
+    if(motion.current.attackTime<=0&&(motion.current.specialMove==="sweep"||motion.current.specialMove==="headKick"))motion.current.specialMove=null;
     spitHitCooldown.current=Math.max(0,spitHitCooldown.current-dt);
     if(phase===3){
       if(tpsAimRef.current.reload&&tpsReloadTimer.current<=0&&tpsAmmo.current<TPS_MAG_SIZE){
@@ -1395,7 +1449,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       attackDirection.current={x:fwdX,z:fwdZ};
       player.current.rotation.y=tpsYaw.current;
     }
-    if(!grounded.current){const jumpGravity=specialJumpActive.current?5.2:16.5;motion.current.jumpHeight=Math.max(0,motion.current.jumpHeight+jumpVelocity.current*dt);jumpVelocity.current-=jumpGravity*dt;if(motion.current.jumpHeight<=0){motion.current.jumpHeight=0;jumpVelocity.current=0;grounded.current=true;if(specialJumpActive.current){specialJumpActive.current=false;specialJumpVel.current={x:0,z:0};motion.current.specialMove="impact";motion.current.slideTime=0.25;let count=0;for(const e of enemies.current){if(!e.alive||Math.hypot(e.x-player.current.position.x,e.z-player.current.position.z)>1.25)continue;count++;e.alive=false;e.health=0;e.bodyState="falling";e.knocked=0.65;e.vx=attackDirection.current.x*1.1;e.vz=attackDirection.current.z*1.1;e.vy=0;addBloodPool(e.x,e.z,1.15);spawnGore(e.x,0.22,e.z,26,5.8);onKill();onScore(100);}if(count)setEnemyVersion(v=>v+1);}}}
+    if(!grounded.current){const jumpGravity=specialJumpActive.current?5.2:16.5;motion.current.jumpHeight=Math.max(0,motion.current.jumpHeight+jumpVelocity.current*dt);jumpVelocity.current-=jumpGravity*dt;if(specialJumpActive.current&&jumpVelocity.current<=0.65)motion.current.superJumpTuck=true;if(motion.current.jumpHeight<=0){motion.current.jumpHeight=0;jumpVelocity.current=0;grounded.current=true;motion.current.superJumpTuck=false;if(specialJumpActive.current){specialJumpActive.current=false;specialJumpVel.current={x:0,z:0};motion.current.specialMove="impact";motion.current.slideTime=0.25;let count=0;for(const e of enemies.current){if(!e.alive||Math.hypot(e.x-player.current.position.x,e.z-player.current.position.z)>1.25)continue;count++;e.alive=false;e.health=0;e.bodyState="falling";e.knocked=0.65;e.vx=attackDirection.current.x*1.1;e.vz=attackDirection.current.z*1.1;e.vy=0;addBloodPool(e.x,e.z,1.15);spawnGore(e.x,0.22,e.z,26,5.8);onKill();onScore(100);}if(count)setEnemyVersion(v=>v+1);}}}
     if(pipeCombo.current){
       const combo=pipeCombo.current;
       combo.elapsed+=dt;
@@ -1428,6 +1482,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       }
     }
     motion.current.grabTime=Math.max(0,motion.current.grabTime-dt);
+    if(motion.current.grabTime<=0)motion.current.grabStyle=null;
     const px=player.current.position.x, pz=player.current.position.z;
     if(pendingShotgun.current){
       pendingShotgun.current.timer-=dt;
@@ -1600,6 +1655,84 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
           e.bodyState="gone";
           if(group)group.visible=false;
           setEnemyVersion(v=>v+1);
+        }
+        return;
+      }
+      if(e.bodyState==="grabInvertLift"){
+        e.grabTimer+=dt;
+        const pX=player.current!.position.x;
+        const pZ=player.current!.position.z;
+        const dirX=attackDirection.current.x;
+        const dirZ=attackDirection.current.z;
+        if(e.grabTimer<0.46){
+          const liftP=THREE.MathUtils.clamp(e.grabTimer/0.46,0,1);
+          const ease=liftP*liftP*(3-2*liftP);
+          e.x=THREE.MathUtils.lerp(pX+dirX*0.78,pX+dirX*0.86,ease);
+          e.z=THREE.MathUtils.lerp(pZ+dirZ*0.78,pZ+dirZ*0.86,ease);
+          e.y=THREE.MathUtils.lerp(0.45,2.05,ease);
+          if(group){
+            group.position.set(e.x,e.y,e.z);
+            group.rotation.set(0,0,0);
+            group.scale.set(1,1,1);
+          }
+        }else{
+          const flipP=THREE.MathUtils.clamp((e.grabTimer-0.46)/0.56,0,1);
+          const ease=flipP*flipP*(3-2*flipP);
+          e.x=pX+dirX*0.86;
+          e.z=pZ+dirZ*0.86;
+          e.y=THREE.MathUtils.lerp(2.05,2.35,ease);
+          if(group){
+            group.position.set(e.x,e.y,e.z);
+            group.rotation.set(0,0,THREE.MathUtils.lerp(0,Math.PI,ease));
+            group.scale.set(1,1,1);
+          }
+        }
+        if(e.grabTimer>=1.02){
+          e.bodyState="grabInvertSlam";
+          e.grabTimer=0;
+        }
+        return;
+      }
+      if(e.bodyState==="grabInvertSlam"){
+        e.grabTimer+=dt;
+        const pX=player.current!.position.x;
+        const pZ=player.current!.position.z;
+        const dirX=attackDirection.current.x;
+        const dirZ=attackDirection.current.z;
+        const slam=THREE.MathUtils.clamp(e.grabTimer/0.33,0,1);
+        const headH=e.kind==="crawler"?1.05:e.kind==="brute"?1.95:1.6;
+        e.x=pX+dirX*0.86;
+        e.z=pZ+dirZ*0.86;
+        e.y=THREE.MathUtils.lerp(2.35,headH-0.15,slam*slam);
+        if(group){
+          group.position.set(e.x,e.y,e.z);
+          group.rotation.set(0,0,Math.PI);
+          group.scale.set(1,1,1);
+        }
+        if(e.grabTimer>=0.33){
+          e.y=headH-0.15;
+          e.bodyState="grabInvertFallen";
+          e.grabTimer=0;
+          spawnGore(e.x,0.28,e.z,28,6.0,10);
+          addBloodPool(e.x,e.z,1.28);
+          onKill();
+          onScore(150);
+          setEnemyVersion(v=>v+1);
+        }
+        return;
+      }
+      if(e.bodyState==="grabInvertFallen"){
+        e.grabTimer+=dt;
+        const headH=e.kind==="crawler"?1.05:e.kind==="brute"?1.95:1.6;
+        if(group){
+          group.position.set(e.x,headH-0.15,e.z);
+          group.rotation.set(0,0,Math.PI);
+          group.scale.set(1,1,1);
+        }
+        if(e.grabTimer>=0.5){
+          e.bodyState="grabMelting";
+          e.grabTimer=0;
+          e.fall=Math.PI/1.42;
         }
         return;
       }
@@ -2017,7 +2150,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     ))}
 
     {enemies.current.map((e)=>(e.alive||e.bodyState!=="alive")&&(phase!==1||e.id>14||initialEnemiesVisible)&&<group key={e.id} ref={node=>{enemyGroups.current[e.id]=node;}} position={[e.x,e.y,e.z]}>
-      <MonsterProceduralCharacter kind={e.kind} headless={e.headless} missingArm={e.severedArm} missingLeg={e.bodyState==="wallStuck"} brokenHead={e.bodyState==="wallStuck"} pinned={e.bodyState==="wallStuck"} animation={e.animation} moving={e.alive&&(e.activated||Math.abs(e.vx)>0.08||Math.abs(e.vz)>0.08)} fallen={e.bodyState==="fallen"||e.bodyState==="grabFallen"||e.bodyState==="macheteFalling"} dissolve={e.bodyState==="grabMelting" ? THREE.MathUtils.clamp(e.grabTimer/1.05,0,1) : e.bodyState==="macheteMelting" ? THREE.MathUtils.clamp(e.grabTimer/0.92,0,1) : 0} attackPulse={e.knocked>0?THREE.MathUtils.clamp(e.knocked/0.65,0,1):e.bodyState==="grabLift"||e.bodyState==="grabThrown"||e.bodyState==="wallFlying"?1:0}/>
+      <MonsterProceduralCharacter kind={e.kind} headless={e.headless} missingArm={e.severedArm} missingLeg={e.bodyState==="wallStuck"} brokenHead={e.bodyState==="wallStuck"} pinned={e.bodyState==="wallStuck"} animation={e.animation} moving={e.alive&&(e.activated||Math.abs(e.vx)>0.08||Math.abs(e.vz)>0.08)} fallen={e.bodyState==="fallen"||e.bodyState==="grabFallen"||e.bodyState==="grabInvertFallen"||e.bodyState==="macheteFalling"} dissolve={e.bodyState==="grabMelting" ? THREE.MathUtils.clamp(e.grabTimer/1.05,0,1) : e.bodyState==="macheteMelting" ? THREE.MathUtils.clamp(e.grabTimer/0.92,0,1) : 0} attackPulse={e.knocked>0?THREE.MathUtils.clamp(e.knocked/0.65,0,1):e.bodyState==="grabLift"||e.bodyState==="grabThrown"||e.bodyState==="grabInvertLift"||e.bodyState==="grabInvertSlam"||e.bodyState==="wallFlying"?1:0}/>
       {e.bodyState==="wallStuck"&&<mesh position={[0,0.95,-0.25]}><circleGeometry args={[1.05,16]}/><meshStandardMaterial color="#4a0911" roughness={0.35}/></mesh>}
     </group>)}
 
@@ -2159,12 +2292,12 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
   const joystickRef=useRef<HTMLDivElement>(null);
   const joystickInput=useRef({x:0,y:0,pointerId:-1});
   const [knob,setKnob]=useState({x:0,y:0});
-  const controls=useRef<WorldControls>({horizontal:0,depth:0,attack:false,grab:false,jump:false,pickup:false,slide:false,sweep:false,superJump:false,escorrao:false});
+  const controls=useRef<WorldControls>({horizontal:0,depth:0,attack:false,grab:false,jump:false,pickup:false,slide:false,sweep:false,superJump:false,escorrao:false,headKick:false});
   const updateJoystick=(event:ReactPointerEvent<HTMLDivElement>)=>{const el=joystickRef.current;if(!el)return;const r=el.getBoundingClientRect();const dx=event.clientX-(r.left+r.width/2),dy=event.clientY-(r.top+r.height/2),radius=r.width*0.34,d=Math.hypot(dx,dy),scale=d>radius?radius/d:1;const x=dx*scale,y=dy*scale;joystickInput.current.x=x/radius;joystickInput.current.y=y/radius;controls.current.horizontal=x/radius;controls.current.depth=y/radius;setKnob({x,y});};
   const releaseJoystick=(event:ReactPointerEvent<HTMLDivElement>)=>{if(joystickInput.current.pointerId!==event.pointerId)return;joystickInput.current={x:0,y:0,pointerId:-1};controls.current.horizontal=0;controls.current.depth=0;setKnob({x:0,y:0});if(joystickRef.current?.hasPointerCapture(event.pointerId))joystickRef.current.releasePointerCapture(event.pointerId);};
-  const setAction=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"sweep"|"superJump"|"escorrao",value:boolean)=>{controls.current[key]=value;};
-  const press=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"sweep"|"superJump"|"escorrao")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,true);};
-  const release=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"sweep"|"superJump"|"escorrao")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,false);};
+  const setAction=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"sweep"|"superJump"|"escorrao"|"headKick",value:boolean)=>{controls.current[key]=value;};
+  const press=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"sweep"|"superJump"|"escorrao"|"headKick")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,true);};
+  const release=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"sweep"|"superJump"|"escorrao"|"headKick")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,false);};
   const handleStageChange=(stage:1|2|3)=>{
     setWorldPhase(stage);
     if(stage===2)setHDZoom(1);
@@ -2308,7 +2441,10 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
       </div>
       <button type="button" className="action-button action-jump" aria-label="Pular" onPointerDown={press("jump")} onPointerUp={release("jump")} onPointerCancel={release("jump")} onPointerLeave={release("jump")}>PULO</button>
       {!isPhase3&&<>
-        <button type="button" className="action-button action-special" aria-label="Super pulo" onPointerDown={press("superJump")} onPointerUp={release("superJump")} onPointerCancel={release("superJump")} onPointerLeave={release("superJump")}>SUPER PULO</button><button type="button" className="action-button action-special" aria-label="Escorrão" onPointerDown={press("escorrao")} onPointerUp={release("escorrao")} onPointerCancel={release("escorrao")} onPointerLeave={release("escorrao")}>ESCORRÃO</button><button type="button" className="action-button action-slide" aria-label="Deslizar" onPointerDown={press("slide")} onPointerUp={release("slide")} onPointerCancel={release("slide")} onPointerLeave={release("slide")}>DESLIZAR</button>
+        {energy>=34&&<button type="button" className="action-button action-special" aria-label="Super pulo" onPointerDown={press("superJump")} onPointerUp={release("superJump")} onPointerCancel={release("superJump")} onPointerLeave={release("superJump")}>SUPER PULO</button>}
+        {energy>=67&&<button type="button" className="action-button action-special" aria-label="Escorão" onPointerDown={press("escorrao")} onPointerUp={release("escorrao")} onPointerCancel={release("escorrao")} onPointerLeave={release("escorrao")}>ESCORÃO</button>}
+        <button type="button" className="action-button action-headkick" aria-label="Chutar cabeça" onPointerDown={press("headKick")} onPointerUp={release("headKick")} onPointerCancel={release("headKick")} onPointerLeave={release("headKick")}>CHUTAR CABEÇA</button>
+        <button type="button" className="action-button action-slide" aria-label="Deslizar" onPointerDown={press("slide")} onPointerUp={release("slide")} onPointerCancel={release("slide")} onPointerLeave={release("slide")}>DESLIZAR</button>
         <button type="button" className="action-button action-sweep" aria-label="Rasteira" onPointerDown={press("sweep")} onPointerUp={release("sweep")} onPointerCancel={release("sweep")} onPointerLeave={release("sweep")}>RASTEIRA</button>
       </>}
     </div>

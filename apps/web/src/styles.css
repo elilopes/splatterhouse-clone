@@ -46,6 +46,8 @@
 .energy-red{background:linear-gradient(90deg,#a32129,#ff4b54)}
 .action-slide{background:#344e68d9;border-color:#9bc5e8}
 .action-sweep{background:#56402ad9;border-color:#d5b37c}
+.action-headkick{background:#732030d9;border-color:#e99aa2}
+.action-special{background:#4f285ed9;border-color:#cfa2eb}
 @media(max-width:850px){
  .rick-energy-hud{top:48px;width:min(270px,62vw);padding:5px 7px;gap:6px}
  .action-buttons{gap:5px;right:8px;bottom:10px;flex-wrap:wrap;justify-content:flex-end;max-width:calc(100% - 146px)}
