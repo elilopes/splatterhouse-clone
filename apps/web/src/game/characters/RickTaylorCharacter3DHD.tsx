@@ -114,7 +114,7 @@ export type RickMotion = {
   jumpHeight: number;
   weapon: RickWeaponId | null;
   slideTime?: number;
-  specialMove?: "slide" | "sweep" | null;
+  specialMove?: "slide" | "sweep" | "escorrao" | "superJump" | "impact" | null;
   shotgunAimPitch?: number;
   shotgunAimYaw?: number;
   leftFlex?: number;
@@ -1909,7 +1909,7 @@ export function RickTaylorRig({
 
       neckBone.rotation.y = THREE.MathUtils.damp(neckBone.rotation.y, -torsoRotY * 0.25, 14, dt);
       headBone.rotation.y = THREE.MathUtils.damp(headBone.rotation.y, -torsoRotY * 0.4, 14, dt);
-      if(motion.specialMove==="sweep"){
+      if(motion.specialMove==="sweep"||motion.specialMove==="escorrao"){
         torsoRotX=0.28;rShoulderX=0.72;lShoulderX=0.68;rElbowX=0.95;lElbowX=0.95;
       }else if(motion.specialMove==="slide"){
         torsoRotX=0.34;rShoulderX=0.95;lShoulderX=0.95;rElbowX=1.05;lElbowX=1.05;
