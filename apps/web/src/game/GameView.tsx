@@ -36,6 +36,8 @@ type SeveredHead = {
 };
 type BloodPool = { id:number; x:number; z:number; radius:number };
 type PickupState = { id:WeaponId; x:number; z:number; collected:boolean };
+type ThrowableKind = "crate"|"stone"|"bone"|"head"|"arm";
+type ThrowableItem = {id:number;kind:ThrowableKind;x:number;y:number;z:number;vx:number;vy:number;vz:number;rotation:number;held:boolean;thrown:boolean;age:number};
 type CombatEffect = {
   id:number; kind:"gore"|"skull"|"arm"|"spark"; x:number; y:number; z:number;
   vx:number; vy:number; vz:number; size:number; age:number;
@@ -523,6 +525,10 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   const rickReadyFrames=useRef(0);
   const enemies=useRef<EnemyState[]>(initialStage===1?initialEnemies.map(e=>({...e})):[]);
   const pickups=useRef<PickupState[]>(initialPickups.map(p=>({...p})));
+  const throwableItems=useRef<ThrowableItem[]>([]);
+  const droppedEnemyParts=useRef(new Set<number>());
+  const heldThrowable=useRef<number|null>(null);
+  const [heldThrowableKind,setHeldThrowableKind]=useState<ThrowableKind|null>(null);
   const motion=useRef<RickMotion>({moving:false,attackTime:0,attackStyle:null,attackProgress:0,grabTime:0,jumpHeight:0,weapon:null,slideTime:0,specialMove:null,superJumpTuck:false,grabStyle:null});
   const pipeCombo=useRef<PipeCombo|null>(null);
   const pendingShotgun=useRef<{timer:number;targetId:number|null}|null>(null);
@@ -1048,18 +1054,15 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   };
 
   const doPickup=()=>{
-    if(phase!==1||!player.current)return;
-    // Weapons are collected in the intended progression: pipe, machete, shotgun.
-    const next=pickups.current.find(p=>!p.collected);
-    if(!next)return;
-    const dx=next.x-player.current.position.x;
-    const dz=next.z-player.current.position.z;
-    const distance=Math.hypot(dx,dz);
-    if(distance>2.65)return;
-    next.collected=true;
-    motion.current.weapon=next.id;
-    setEquipped(next.id);
-    setEnemyVersion(v=>v+1);
+    if(!player.current)return;
+    if(heldThrowable.current!==null){
+      const item=throwableItems.current.find(v=>v.id===heldThrowable.current);
+      if(item){const dir=attackDirection.current;item.held=false;item.thrown=true;item.age=0;item.x=player.current.position.x+dir.x*0.78;item.y=1.25+motion.current.jumpHeight;item.z=player.current.position.z+dir.z*0.78;item.vx=dir.x*10.5;item.vy=4.2;item.vz=dir.z*10.5;}
+      heldThrowable.current=null;setHeldThrowableKind(null);setEnemyVersion(v=>v+1);return;
+    }
+    const nearby=throwableItems.current.filter(v=>!v.held&&!v.thrown).sort((a,b)=>Math.hypot(a.x-player.current!.position.x,a.z-player.current!.position.z)-Math.hypot(b.x-player.current!.position.x,b.z-player.current!.position.z))[0];
+    if(nearby&&Math.hypot(nearby.x-player.current.position.x,nearby.z-player.current.position.z)<2.35){nearby.held=true;heldThrowable.current=nearby.id;setHeldThrowableKind(nearby.kind);setEnemyVersion(v=>v+1);return;}
+    if(phase===1){const next=pickups.current.find(p=>!p.collected);if(!next)return;if(Math.hypot(next.x-player.current.position.x,next.z-player.current.position.z)>2.65)return;next.collected=true;motion.current.weapon=next.id;setEquipped(next.id);setEnemyVersion(v=>v+1);}
   };
 
   const applyPipeImpact=(style:PipeAttackStyle)=>{
@@ -1335,7 +1338,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   };
 
   useEffect(()=>{
-    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();keys.current.add(k);if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="k"&&phase!==3)doGrab();if(k===" "||k==="l")doJump();if(k==="c")doSlide();if(k==="z")doSpecialStrike("sweep");if(k==="f")doHeadKick();if(k==="b")doSuperJump();if(k==="n")doEscorrao();if(k==="e"&&phase===1)doPickup();if(k==="v"&&phase===3){const next=equipped==="shotgun"?"sickle":"shotgun";setEquipped(next);motion.current.weapon=next;}if(k==="r"&&phase===3&&tpsReloadTimer.current<=0&&tpsAmmo.current<TPS_MAG_SIZE){tpsReloadTimer.current=1.05;}};
+    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();keys.current.add(k);if(["arrowleft","arrowright","arrowup","arrowdown"," "].includes(k))e.preventDefault();if(k==="k"&&phase!==3)doGrab();if(k===" "||k==="l")doJump();if(k==="c")doSlide();if(k==="z")doSpecialStrike("sweep");if(k==="f")doHeadKick();if(k==="b")doSuperJump();if(k==="n")doEscorrao();if(k==="e"||k==="g")doPickup();if(k==="v"&&phase===3){const next=equipped==="shotgun"?"sickle":"shotgun";setEquipped(next);motion.current.weapon=next;}if(k==="r"&&phase===3&&tpsReloadTimer.current<=0&&tpsAmmo.current<TPS_MAG_SIZE){tpsReloadTimer.current=1.05;}};
     const up=(e:KeyboardEvent)=>keys.current.delete(e.key.toLowerCase());
     window.addEventListener("keydown",down);window.addEventListener("keyup",up);return()=>{window.removeEventListener("keydown",down);window.removeEventListener("keyup",up);};
   });
@@ -1358,7 +1361,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     motion.current.weapon=equipped;
     const c=controls.current;const prior=lastActions.current;
     const attackHeld=c.attack||keys.current.has("j");
-    if(attackHeld&&!prior.attack)doAttack();if(c.grab&&!prior.grab)doGrab();if(c.jump&&!prior.jump)doJump();if(c.pickup&&!prior.pickup)doPickup();
+    if(attackHeld&&!prior.attack){if(heldThrowable.current!==null)doPickup();else doAttack();}if(c.grab&&!prior.grab)doGrab();if(c.jump&&!prior.jump)doJump();if(c.pickup&&!prior.pickup)doPickup();
     if(c.slide&&!prior.slide)doSlide();if(c.sweep&&!prior.sweep)doSpecialStrike("sweep");if(c.headKick&&!prior.headKick)doHeadKick();if(c.superJump&&!prior.superJump)doSuperJump();if(c.escorrao&&!prior.escorrao)doEscorrao();
     lastActions.current={attack:attackHeld,grab:c.grab,jump:c.jump,pickup:c.pickup,slide:c.slide,sweep:c.sweep,superJump:c.superJump,escorrao:c.escorrao,headKick:c.headKick};
     attackCooldown.current=Math.max(0,attackCooldown.current-dt);grabCooldown.current=Math.max(0,grabCooldown.current-dt);slideCooldown.current=Math.max(0,slideCooldown.current-dt);
@@ -1624,6 +1627,12 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
 
     enemies.current.forEach((e)=>{
       const group=enemyGroups.current[e.id];
+      if(!e.alive&&!droppedEnemyParts.current.has(e.id)&&e.bodyState!=="gone"){
+        droppedEnemyParts.current.add(e.id);
+        const kind:ThrowableKind=e.headless?"arm":"head";
+        throwableItems.current.push({id:nextEffectId.current++,kind,x:e.x+(Math.random()-0.5)*0.45,y:0.32,z:e.z+(Math.random()-0.5)*0.45,vx:0,vy:0,vz:0,rotation:Math.random()*Math.PI,held:false,thrown:false,age:0});
+        setEnemyVersion(v=>v+1);
+      }
       // Keep the initial Phase 1 enemies hidden and inactive during the opening delay.
       if(phase===1 && e.id<=14 && !initialEnemiesVisible)return;
       if(e.bodyState==="grabLift"){
@@ -2071,6 +2080,30 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
         mesh.scale.set(spread,0.22,spread);
       }
     });
+    // Atualiza objetos arremessáveis e partes de monstros.
+    let throwableChanged=false;
+    for(const item of throwableItems.current){
+      if(item.held&&heldThrowable.current===item.id){
+        const dir=attackDirection.current;
+        item.x=player.current.position.x+dir.x*0.48-dir.z*0.12;
+        item.y=1.22+motion.current.jumpHeight;
+        item.z=player.current.position.z+dir.z*0.48+dir.x*0.12;
+      }else if(item.thrown){
+        item.age+=dt;item.x+=item.vx*dt;item.y+=item.vy*dt;item.z+=item.vz*dt;
+        item.vy-=10.5*dt;item.vx*=Math.max(0,1-dt*0.12);item.vz*=Math.max(0,1-dt*0.12);
+        const hit=enemies.current.find(e=>e.alive&&Math.hypot(e.x-item.x,e.z-item.z)<0.82&&item.y<2.15);
+        if(hit){
+          hit.health-=hit.kind==="brute"?1:2;hit.vx=item.vx*0.38;hit.vz=item.vz*0.38;hit.vy=2.1;hit.knocked=0.75;
+          spawnGore(hit.x,0.9,hit.z,10,3.8);
+          if(hit.health<=0){hit.alive=false;hit.bodyState="falling";addBloodPool(hit.x,hit.z,0.9);onKill();onScore(100);}
+          item.thrown=false;item.age=99;throwableChanged=true;setEnemyVersion(v=>v+1);
+        }else if(item.y<=0.18){item.y=0.18;item.vy=0;item.vx*=0.25;item.vz*=0.25;if(item.age>0.8){item.thrown=false;item.age=99;}}
+        if(item.age>3.2){item.thrown=false;item.age=99;}
+      }
+    }
+    const throwableCount=throwableItems.current.length;
+    throwableItems.current=throwableItems.current.filter(v=>v.age<99);
+    if(throwableChanged||throwableCount!==throwableItems.current.length)setEnemyVersion(v=>v+1);
     const beforeSplashes=spitSplashes.current.length;
     spitSplashes.current=spitSplashes.current.filter(s=>s.age<1.35);
     if(landedSpit||beforeSplashes!==spitSplashes.current.length)setEnemyVersion(v=>v+1);
@@ -2272,6 +2305,9 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       <mesh position={[0,0.035,0]} scale={[0.7,0.18,0.7]}><sphereGeometry args={[0.38,16,10]}/><meshStandardMaterial color="#9bd72b" roughness={0.2}/></mesh>
     </group>)}
 
+    {throwableItems.current.map(item=><group key={`throwable-${item.id}`} position={[item.x,item.y,item.z]} rotation={[0,item.rotation+item.age*5,item.thrown?item.age*7:0]}>
+      {item.kind==="head"?<mesh castShadow><sphereGeometry args={[0.22,14,12]}/><meshStandardMaterial color="#9a5d50" roughness={0.78}/></mesh>:item.kind==="arm"?<group rotation={[0,0,Math.PI/2]}><mesh castShadow><capsuleGeometry args={[0.12,0.48,6,10]}/><meshStandardMaterial color="#8e5141" roughness={0.8}/></mesh><mesh position={[0.32,0,0]}><sphereGeometry args={[0.13,10,8]}/><meshStandardMaterial color="#67252a"/></mesh></group>:item.kind==="bone"?<mesh rotation={[0,0,Math.PI/2]} castShadow><capsuleGeometry args={[0.1,0.48,5,9]}/><meshStandardMaterial color="#c7b99c" roughness={0.9}/></mesh>:item.kind==="stone"?<mesh castShadow><dodecahedronGeometry args={[0.3,0]}/><meshStandardMaterial color="#77716a" roughness={1}/></mesh>:<mesh castShadow><boxGeometry args={[0.58,0.58,0.58]}/><meshStandardMaterial color="#684b36" roughness={0.95}/></mesh>}
+    </group>)}
     {phase===1&&pickups.current.map((p)=>!p.collected&&<group key={p.id} position={[p.x,0.16,p.z]}>
       <mesh rotation={[-Math.PI/2,0,0]}><torusGeometry args={[0.58,0.035,8,24]}/><meshStandardMaterial color="#db6b42" emissive="#612012"/></mesh>
       <group position={[0,0.18,0]}><WeaponModel id={p.id}/></group>
