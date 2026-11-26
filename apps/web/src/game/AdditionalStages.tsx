@@ -64,9 +64,9 @@ export function MansionBasement() {
 export function UndergroundDungeon() {
   return <group>
     <color attach="background" args={["#08090c"]}/>
-    <Stone position={[0,-0.35,0]} scale={[110,0.7,16]} color="#29272a"/>
-    <Stone position={[0,6.35,0]} scale={[110,0.65,16]} color="#17171b"/>
-    <Stone position={[0,2.7,-7.7]} scale={[110,5.7,0.9]} color="#302b30"/>
+    <Stone position={[0,-0.35,0]} scale={[140,0.7,16]} color="#29272a"/>
+    <Stone position={[0,6.35,0]} scale={[140,0.65,16]} color="#17171b"/>
+    <Stone position={[0,2.7,-7.7]} scale={[140,5.7,0.9]} color="#302b30"/>
     <Stone position={[0,2.7,7.7]} scale={[110,5.7,0.9]} color="#302b30"/>
     {Array.from({length:8},(_,i)=><group key={i} position={[-35+Math.floor(i/2)*17,(0),i%2?-4.8:4.8]}>
       <mesh position={[0,1.65,0]}><cylinderGeometry args={[0.62,0.82,3.3,7]}/><meshStandardMaterial color="#51494d" roughness={1}/></mesh>
@@ -89,8 +89,8 @@ export function UndergroundDungeon() {
 export function HauntedCemetery() {
   return <group>
     <color attach="background" args={["#090b12"]}/>
-    <Stone position={[0,-0.3,0]} scale={[100,0.6,18]} color="#29272a"/>
-    <mesh position={[0,0.02,0]} rotation={[-Math.PI/2,0,0]}><planeGeometry args={[100,18]}/><meshStandardMaterial color="#37302d" roughness={1}/></mesh>
+    <Stone position={[0,-0.3,0]} scale={[130,0.6,18]} color="#29272a"/>
+    <mesh position={[0,0.02,0]} rotation={[-Math.PI/2,0,0]}><planeGeometry args={[130,18]}/><meshStandardMaterial color="#37302d" roughness={1}/></mesh>
     {Array.from({length:27},(_,i)=>{
       const x=-34+i*3.45,z=(i%3-1)*1.0,broken=i%6===0;
       return <group key={i} position={[x,0,z]} rotation={[0,(i%5-2)*0.07,0]}>
