@@ -152,7 +152,7 @@ export default function App() {
                 <p className="hint">Mover: WASD/setas · Mirar: mouse/setas ou arraste na tela · Atirar: clique esquerdo / J · Zoom sobre o ombro: botão direito / Shift · Recarregar: R · Pulo: Espaço.</p>
               ) : (
                 <>
-                  <p className="hint">Mover: WASD/setas ou joystick virtual · Soco/ataque: J · Agarrão: K · Pulo: Espaço · Recolher arma: aproxime-se (coleta automática no mobile) ou pressione E no teclado. Use os botões na tela com mouse ou toque.</p>
+                  <p className="hint">Mover: WASD/setas ou joystick virtual · Soco/ataque: J · Agarrão: K · Pulo: Espaço · Pegar/arremessar objetos e partes de monstros: E ou G no teclado; no mobile, use PEGAR/ARREM. (ou ataque para arremessar). Recolher armas: aproxime-se. Use os botões na tela com mouse ou toque.</p>
                   <p className="hint">Sequência de armas: mãos → cano → facão → escopeta. A entrada da mansão leva à Fase 02; a escadaria leva à Fase 03; o corredor conduz ao porão, à masmorra e ao cemitério.</p>
                 </>
               )}
