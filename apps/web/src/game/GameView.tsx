@@ -563,6 +563,11 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     }
   },[camera]);
 
+  const placeThrowableProps=(positions:Array<{kind:ThrowableKind;x:number;z:number}>)=>{
+    throwableItems.current=positions.map((p)=>({id:nextEffectId.current++,kind:p.kind,x:p.x,y:0.32,z:p.z,vx:0,vy:0,vz:0,rotation:Math.random()*Math.PI,held:false,thrown:false,age:0}));
+    heldThrowable.current=null;setHeldThrowableKind(null);droppedEnemyParts.current.clear();
+  };
+
   const enterPhase2=(resetCameraImmediate=false)=>{
     if(!player.current)return;
     rickVisibleSent.current=false;
@@ -591,6 +596,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     effects.current=[];
     tracers.current=[];
     enemies.current=[];
+    placeThrowableProps([{kind:"crate",x:-11,z:3},{kind:"stone",x:10,z:4},{kind:"bone",x:-7,z:-8},{kind:"crate",x:8,z:-11}]);
     const hallWave=[
       [-13.2,-12.8,"crawler"],[13.0,-12.2,"spitter"],[-14.0,5.0,"brute"],
       [14.0,8.0,"crawler"],[-5.5,15.0,"spitter"],[7.0,15.2,"brute"]
@@ -649,6 +655,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     openedCorridorDoors.current.clear();
     triggeredCorridorWaves.current.clear();
     enemies.current=[];
+    placeThrowableProps([{kind:"crate",x:-1.8,z:20},{kind:"stone",x:1.8,z:12},{kind:"bone",x:-1.5,z:-9},{kind:"crate",x:1.6,z:-27}]);
     perspCamRef.position.set(0.72,1.88,29.1);
     perspCamRef.lookAt(0.35,1.45,10.0);
     setEnemyVersion(v=>v+1);
@@ -659,6 +666,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     player.current.position.set(0,0,17);player.current.rotation.set(0,0,0);player.current.visible=true;
     attackDirection.current={x:0,z:-1};upperDeckAccess.current=false;
     enemies.current=[];severedHeads.current=[];bloodPools.current=[];effects.current=[];tracers.current=[];
+    placeThrowableProps([{kind:"stone",x:-3,z:13},{kind:"crate",x:3,z:6},{kind:"bone",x:-3,z:-3},{kind:"stone",x:3,z:-12}]);
     const wave:[number,number,EnemyKind][]=[[-4,-7,"crawler"],[4,-10,"spitter"],[-3,-15,"brute"],[0,-17,"brute"]];
     wave.forEach((p,i)=>{const enemy=makeEnemy(nextEnemyId.current++,p[0],p[1],p[2],i*1.2,true);if(i===3){enemy.boss=true;enemy.health=12;}enemies.current.push(enemy);});setEnemyVersion(v=>v+1);
   };
@@ -667,6 +675,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     player.current.position.set(-30,0,0);player.current.rotation.set(0,0,0);player.current.visible=true;
     attackDirection.current={x:1,z:0};facing.current=1;
     enemies.current=[];severedHeads.current=[];bloodPools.current=[];effects.current=[];tracers.current=[];
+    placeThrowableProps([{kind:"bone",x:-23,z:0.4},{kind:"stone",x:-8,z:-0.45},{kind:"crate",x:7,z:0.45},{kind:"bone",x:27,z:-0.4},{kind:"stone",x:48,z:0.35}]);
     const wave:[number,EnemyKind][]=[[-15,"crawler"],[-4,"brute"],[10,"spitter"],[24,"crawler"],[39,"brute"]];
     wave.forEach((p,i)=>enemies.current.push(makeEnemy(nextEnemyId.current++,p[0],0,p[1],i*1.1,true)));
     camera.position.set(-30,4.6,18);camera.lookAt(-30,3.2,0);setEnemyVersion(v=>v+1);
@@ -676,6 +685,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     player.current.position.set(-30,0,0);player.current.rotation.set(0,0,0);player.current.visible=true;
     attackDirection.current={x:1,z:0};facing.current=1;
     enemies.current=[];severedHeads.current=[];bloodPools.current=[];effects.current=[];tracers.current=[];
+    placeThrowableProps([{kind:"stone",x:-23,z:0.45},{kind:"bone",x:-9,z:-0.4},{kind:"stone",x:7,z:0.4},{kind:"crate",x:25,z:-0.4},{kind:"bone",x:45,z:0.45}]);
     const wave:[number,EnemyKind][]=[[-16,"crawler"],[-5,"spitter"],[9,"brute"],[23,"crawler"],[38,"brute"],[54,"spitter"]];
     wave.forEach((p,i)=>{const enemy=makeEnemy(nextEnemyId.current++,p[0],0,p[1],i*1.3,true);enemy.y=-1.25;if(i===5){enemy.boss=true;enemy.health=16;}enemies.current.push(enemy);});
     camera.position.set(-30,4.6,18);camera.lookAt(-30,3.2,0);setEnemyVersion(v=>v+1);
@@ -712,6 +722,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     camera.position.set(-24,4.6,18);
     camera.lookAt(-24,3.2,0);
     if(player.current){
+      placeThrowableProps([{kind:"crate",x:-19,z:0.5},{kind:"stone",x:-8,z:-0.4},{kind:"bone",x:8,z:0.4},{kind:"crate",x:25,z:-0.45},{kind:"stone",x:43,z:0.5}]);
       player.current.position.set(-24,0,0);
       player.current.rotation.y=-Math.PI/2;
     }
@@ -2547,9 +2558,9 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
           <button type="button" className="action-button action-grab" aria-label="Agarrar e arremessar" onPointerDown={press("grab")} onPointerUp={release("grab")} onPointerCancel={release("grab")} onPointerLeave={release("grab")}>AGARRÃO</button>
         )}
         {isPhase3 ? (
-          <button type="button" className="action-button action-pickup" aria-label="Recarregar escopeta" onPointerDown={e=>{e.preventDefault();tpsAimRef.current.reload=true;}}>RECAR.</button>
+          <button type="button" className="action-button action-pickup" aria-label={heldThrowableKind?"Arremessar objeto":"Pegar objeto ou parte de monstro"} onPointerDown={press("pickup")} onPointerUp={release("pickup")} onPointerCancel={release("pickup")} onPointerLeave={release("pickup")}>{heldThrowableKind?"ARREM.":"PEGAR"}</button>
         ) : (
-          <button type="button" className="action-button action-pickup" aria-label="Pegar próxima arma" onPointerDown={press("pickup")} onPointerUp={release("pickup")} onPointerCancel={release("pickup")} onPointerLeave={release("pickup")}>PEGAR</button>
+          <button type="button" className="action-button action-pickup" aria-label={heldThrowableKind?"Arremessar objeto":"Pegar objeto ou parte de monstro"} onPointerDown={press("pickup")} onPointerUp={release("pickup")} onPointerCancel={release("pickup")} onPointerLeave={release("pickup")}>{heldThrowableKind?"ARREM.":"PEGAR"}</button>
         )}
       </div>
       <button type="button" className="action-button action-jump" aria-label="Pular" onPointerDown={press("jump")} onPointerUp={release("jump")} onPointerCancel={release("jump")} onPointerLeave={release("jump")}>PULO</button>
