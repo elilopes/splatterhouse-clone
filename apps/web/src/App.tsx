@@ -11,7 +11,7 @@ export default function App() {
   const [paused, setPaused] = useState(false);
   const [screen, setScreen] = useState<Screen>("title");
   const [selectedStartStage, setSelectedStartStage] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
-  const [currentPhase, setCurrentPhase] = useState<1 | 2 | 3>(1);
+  const [currentPhase, setCurrentPhase] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
   const [phase3Cleared, setPhase3Cleared] = useState(false);
   const [gameRunId, setGameRunId] = useState(0);
   const [message, setMessage] = useState("Modo visitante — progresso salvo neste dispositivo");
