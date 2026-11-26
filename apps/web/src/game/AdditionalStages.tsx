@@ -1,8 +1,22 @@
 import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
+import { useRef } from "react";
 
 function Stone({position,scale,color="#29252a",rotation}:{position:[number,number,number];scale:[number,number,number];color?:string;rotation?:[number,number,number]}) {
   return <mesh position={position} scale={scale} rotation={rotation} castShadow receiveShadow><boxGeometry args={[1,1,1]}/><meshStandardMaterial color={color} roughness={0.94}/></mesh>;
 }
+function RotatingTrap({position}:{position:[number,number,number]}) {
+  const rotor=useRef<THREE.Group>(null);
+  useFrame((_,dt)=>{if(rotor.current)rotor.current.rotation.z+=dt*2.6;});
+  return <group position={position}>
+    <mesh><cylinderGeometry args={[0.58,0.58,0.18,16]}/><meshStandardMaterial color="#41464a" metalness={0.8} roughness={0.3}/></mesh>
+    <group ref={rotor}>
+      {Array.from({length:8},(_,i)=><mesh key={i} position={[Math.cos(i*Math.PI/4)*0.45,0,Math.sin(i*Math.PI/4)*0.45]} rotation={[0,0,-i*Math.PI/4]}><boxGeometry args={[0.48,0.11,0.16]}/><meshStandardMaterial color="#9b9da0" metalness={0.82} roughness={0.24}/></mesh>)}
+    </group>
+    <pointLight position={[0,0.5,0]} intensity={0.35} color="#b52c28" distance={2.5}/>
+  </group>;
+}
+
 function WallTorch({position}:{position:[number,number,number]}) {
   return <group position={position}>
     <mesh position={[0,0.42,0]}><cylinderGeometry args={[0.045,0.07,0.65,8]}/><meshStandardMaterial color="#39251d"/></mesh>
@@ -40,6 +54,9 @@ export function MansionBasement() {
     <Stone position={[0,2.25,5.8]} scale={[4.5,0.24,0.55]} color="#55474b"/>
     <Stone position={[-1.35,1.0,5.8]} scale={[0.18,2,0.18]} color="#8b7774"/>
     <Stone position={[1.35,1.0,5.8]} scale={[0.18,2,0.18]} color="#8b7774"/>
+    <RotatingTrap position={[-2.5,0.18,2.5]}/>
+    <RotatingTrap position={[2.5,0.18,-5.5]}/>
+    <Stone position={[0,-0.04,2.5]} scale={[1.25,0.1,2.0]} color="#111013"/>
     <pointLight position={[0,4,-16]} intensity={2.6} color="#a52f3b" distance={13}/>
   </group>;
 }
