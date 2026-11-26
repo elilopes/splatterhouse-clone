@@ -1641,7 +1641,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       const group=enemyGroups.current[e.id];
       if(!e.alive&&!droppedEnemyParts.current.has(e.id)&&e.bodyState!=="gone"){
         droppedEnemyParts.current.add(e.id);
-        const kind:ThrowableKind=e.headless?"arm":"head";
+        const kind:ThrowableKind=(e.headless||e.severedArm)?"arm":"head";
         throwableItems.current.push({id:nextEffectId.current++,kind,x:e.x+(Math.random()-0.5)*0.45,y:0.32,z:e.z+(Math.random()-0.5)*0.45,vx:0,vy:0,vz:0,rotation:Math.random()*Math.PI,held:false,thrown:false,age:0});
         setEnemyVersion(v=>v+1);
       }
