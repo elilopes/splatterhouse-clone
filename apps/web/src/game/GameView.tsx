@@ -2102,7 +2102,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     for(const item of throwableItems.current){
       if(item.held&&heldThrowable.current===item.id){
         const dir=attackDirection.current;const action=objectAction.current;
-        const pickupLift=action?.kind==="pickup"?THREE.MathUtils.clamp((motion.current.actionProgress??0)*1.9,0,1):1;
+        const pickupLift=action?.kind==="pickup"?THREE.MathUtils.clamp(((motion.current.actionProgress??0)-0.48)/0.52,0,1):1;
         const handReach=action?.kind==="throw"?THREE.MathUtils.lerp(0.52,0.86,THREE.MathUtils.clamp((motion.current.actionProgress??0)/0.46,0,1)):0.52;
         item.x=player.current.position.x+dir.x*handReach-dir.z*0.12;
         item.y=0.38+0.84*pickupLift+motion.current.jumpHeight;
