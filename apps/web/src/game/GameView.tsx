@@ -530,7 +530,8 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   const droppedEnemyParts=useRef(new Set<number>());
   const heldThrowable=useRef<number|null>(null);
   const [heldThrowableKind,setHeldThrowableKind]=useState<ThrowableKind|null>(null);
-  const motion=useRef<RickMotion>({moving:false,attackTime:0,attackStyle:null,attackProgress:0,grabTime:0,jumpHeight:0,weapon:null,slideTime:0,specialMove:null,superJumpTuck:false,grabStyle:null});
+  const objectAction=useRef<{kind:"pickup"|"throw";elapsed:number;itemId:number;attached:boolean;released:boolean}|null>(null);
+  const motion=useRef<RickMotion>({moving:false,attackTime:0,attackStyle:null,attackProgress:0,grabTime:0,jumpHeight:0,weapon:null,slideTime:0,specialMove:null,actionProgress:0,superJumpTuck:false,grabStyle:null});
   const pipeCombo=useRef<PipeCombo|null>(null);
   const pendingShotgun=useRef<{timer:number;targetId:number|null}|null>(null);
   const macheteAttackVariant=useRef<"head"|"arm">("head");
@@ -566,7 +567,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
 
   const placeThrowableProps=(positions:Array<{kind:ThrowableKind;x:number;z:number}>)=>{
     throwableItems.current=positions.map((p)=>({id:nextEffectId.current++,kind:p.kind,x:p.x,y:0.32,z:p.z,vx:0,vy:0,vz:0,rotation:Math.random()*Math.PI,held:false,thrown:false,age:0}));
-    heldThrowable.current=null;setHeldThrowableKind(null);droppedEnemyParts.current.clear();
+    heldThrowable.current=null;setHeldThrowableKind(null);objectAction.current=null;motion.current.actionProgress=0;droppedEnemyParts.current.clear();
   };
 
   const enterPhase2=(resetCameraImmediate=false)=>{
@@ -1066,14 +1067,10 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   };
 
   const doPickup=()=>{
-    if(!player.current)return;
-    if(heldThrowable.current!==null){
-      const item=throwableItems.current.find(v=>v.id===heldThrowable.current);
-      if(item){const dir=attackDirection.current;item.held=false;item.thrown=true;item.age=0;item.x=player.current.position.x+dir.x*0.78;item.y=1.25+motion.current.jumpHeight;item.z=player.current.position.z+dir.z*0.78;item.vx=dir.x*10.5;item.vy=4.2;item.vz=dir.z*10.5;}
-      heldThrowable.current=null;setHeldThrowableKind(null);setEnemyVersion(v=>v+1);return;
-    }
+    if(!player.current||objectAction.current||motion.current.attackTime>0||motion.current.grabTime>0||motion.current.jumpHeight>0.12||(motion.current.slideTime??0)>0||motion.current.specialMove!==null)return;
+    if(heldThrowable.current!==null){const item=throwableItems.current.find(v=>v.id===heldThrowable.current);if(!item)return;objectAction.current={kind:"throw",elapsed:0,itemId:item.id,attached:true,released:false};motion.current.specialMove="throw";motion.current.actionProgress=0;motion.current.moving=false;return;}
     const nearby=throwableItems.current.filter(v=>!v.held&&!v.thrown).sort((a,b)=>Math.hypot(a.x-player.current!.position.x,a.z-player.current!.position.z)-Math.hypot(b.x-player.current!.position.x,b.z-player.current!.position.z))[0];
-    if(nearby&&Math.hypot(nearby.x-player.current.position.x,nearby.z-player.current.position.z)<2.35){nearby.held=true;heldThrowable.current=nearby.id;setHeldThrowableKind(nearby.kind);setEnemyVersion(v=>v+1);return;}
+    if(nearby&&Math.hypot(nearby.x-player.current.position.x,nearby.z-player.current.position.z)<2.35){objectAction.current={kind:"pickup",elapsed:0,itemId:nearby.id,attached:false,released:false};motion.current.specialMove="pickup";motion.current.actionProgress=0;motion.current.moving=false;return;}
     if(phase===1){const next=pickups.current.find(p=>!p.collected);if(!next)return;if(Math.hypot(next.x-player.current.position.x,next.z-player.current.position.z)>2.65)return;next.collected=true;motion.current.weapon=next.id;setEquipped(next.id);setEnemyVersion(v=>v+1);}
   };
 
@@ -1373,11 +1370,18 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     motion.current.weapon=equipped;
     const c=controls.current;const prior=lastActions.current;
     const attackHeld=c.attack||keys.current.has("j");
-    if(attackHeld&&!prior.attack){if(heldThrowable.current!==null)doPickup();else doAttack();}if(c.grab&&!prior.grab)doGrab();if(c.jump&&!prior.jump)doJump();if(c.pickup&&!prior.pickup)doPickup();
-    if(c.slide&&!prior.slide)doSlide();if(c.sweep&&!prior.sweep)doSpecialStrike("sweep");if(c.headKick&&!prior.headKick)doHeadKick();if(c.superJump&&!prior.superJump)doSuperJump();if(c.escorrao&&!prior.escorrao)doEscorrao();
+    if(!objectAction.current){
+      if(attackHeld&&!prior.attack){if(heldThrowable.current!==null)doPickup();else doAttack();}
+      if(c.grab&&!prior.grab)doGrab();if(c.jump&&!prior.jump)doJump();if(c.pickup&&!prior.pickup)doPickup();
+      if(c.slide&&!prior.slide)doSlide();if(c.sweep&&!prior.sweep)doSpecialStrike("sweep");if(c.headKick&&!prior.headKick)doHeadKick();if(c.superJump&&!prior.superJump)doSuperJump();if(c.escorrao&&!prior.escorrao)doEscorrao();
+    }
     lastActions.current={attack:attackHeld,grab:c.grab,jump:c.jump,pickup:c.pickup,slide:c.slide,sweep:c.sweep,superJump:c.superJump,escorrao:c.escorrao,headKick:c.headKick};
     attackCooldown.current=Math.max(0,attackCooldown.current-dt);grabCooldown.current=Math.max(0,grabCooldown.current-dt);slideCooldown.current=Math.max(0,slideCooldown.current-dt);
     motion.current.slideTime=Math.max(0,(motion.current.slideTime??0)-dt);specialJumpCooldown.current=Math.max(0,specialJumpCooldown.current-dt);escorraoCooldown.current=Math.max(0,escorraoCooldown.current-dt);
+    if(objectAction.current){const action=objectAction.current;action.elapsed+=dt;const duration=action.kind==="pickup"?0.88:0.78;motion.current.actionProgress=THREE.MathUtils.clamp(action.elapsed/duration,0,1);motion.current.moving=false;
+      if(action.kind==="pickup"&&!action.attached&&action.elapsed>=0.43){const item=throwableItems.current.find(v=>v.id===action.itemId);if(item){item.held=true;heldThrowable.current=item.id;setHeldThrowableKind(item.kind);action.attached=true;setEnemyVersion(v=>v+1);}else{objectAction.current=null;motion.current.specialMove=null;motion.current.actionProgress=0;}}
+      if(action.kind==="throw"&&!action.released&&action.elapsed>=0.36){const item=throwableItems.current.find(v=>v.id===action.itemId);if(item&&player.current){const dir=attackDirection.current;item.held=false;item.thrown=true;item.age=0;item.x=player.current.position.x+dir.x*0.78-dir.z*0.12;item.y=1.2+motion.current.jumpHeight;item.z=player.current.position.z+dir.z*0.78+dir.x*0.12;item.vx=dir.x*10.5;item.vy=4.2;item.vz=dir.z*10.5;}heldThrowable.current=null;setHeldThrowableKind(null);action.released=true;setEnemyVersion(v=>v+1);}
+      if(action.elapsed>=duration){objectAction.current=null;motion.current.specialMove=null;motion.current.actionProgress=0;}}
     if(motion.current.slideTime<=0&&(motion.current.specialMove==="slide"||motion.current.specialMove==="escorrao"||motion.current.specialMove==="impact")){if(motion.current.specialMove==="escorrao"){escorraoVel.current={x:0,z:0};escorraoHitIds.current.clear();}motion.current.specialMove=null;}
     if(motion.current.attackTime<=0&&(motion.current.specialMove==="sweep"||motion.current.specialMove==="headKick"))motion.current.specialMove=null;
     spitHitCooldown.current=Math.max(0,spitHitCooldown.current-dt);
@@ -1410,8 +1414,9 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       : Number(keys.current.has("d")||keys.current.has("arrowright"))-Number(keys.current.has("a")||keys.current.has("arrowleft"));
     const keyD=Number(keys.current.has("s")||keys.current.has("arrowdown"))-Number(keys.current.has("w")||keys.current.has("arrowup"));
     const dx=THREE.MathUtils.clamp(c.horizontal+keyH,-1,1),dz=THREE.MathUtils.clamp(c.depth+keyD,-1,1);
-    const moving=Math.abs(dx)+Math.abs(dz)>0.08;motion.current.moving=moving;
-    const airSuperLeap=specialJumpActive.current&&!grounded.current;
+    const objectActionActive=objectAction.current!==null;
+    const moving=Math.abs(dx)+Math.abs(dz)>0.08&&!objectActionActive;motion.current.moving=moving;
+    const airSuperLeap=specialJumpActive.current&&!grounded.current&&!objectActionActive;
     const escorraoSliding=motion.current.specialMove==="escorrao"&&(motion.current.slideTime??0)>0;
     if(moving||airSuperLeap||escorraoSliding){
       const v=moving?new THREE.Vector3(dx,0,dz).normalize():new THREE.Vector3(0,0,0);
@@ -2096,10 +2101,12 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     let throwableChanged=false;
     for(const item of throwableItems.current){
       if(item.held&&heldThrowable.current===item.id){
-        const dir=attackDirection.current;
-        item.x=player.current.position.x+dir.x*0.48-dir.z*0.12;
-        item.y=1.22+motion.current.jumpHeight;
-        item.z=player.current.position.z+dir.z*0.48+dir.x*0.12;
+        const dir=attackDirection.current;const action=objectAction.current;
+        const pickupLift=action?.kind==="pickup"?THREE.MathUtils.clamp((motion.current.actionProgress??0)*1.9,0,1):1;
+        const handReach=action?.kind==="throw"?THREE.MathUtils.lerp(0.52,0.86,THREE.MathUtils.clamp((motion.current.actionProgress??0)/0.46,0,1)):0.52;
+        item.x=player.current.position.x+dir.x*handReach-dir.z*0.12;
+        item.y=0.38+0.84*pickupLift+motion.current.jumpHeight;
+        item.z=player.current.position.z+dir.z*handReach+dir.x*0.12;
       }else if(item.thrown){
         item.age+=dt;item.x+=item.vx*dt;item.y+=item.vy*dt;item.z+=item.vz*dt;
         item.vy-=10.5*dt;item.vx*=Math.max(0,1-dt*0.12);item.vz*=Math.max(0,1-dt*0.12);
