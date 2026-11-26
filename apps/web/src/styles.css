@@ -57,3 +57,17 @@
  .action-jump{width:46px;height:46px}
  .action-pickup{width:44px;height:44px}
 }
+
+.direct-stage-menu{width:min(900px,100%);margin:34px auto 0;text-align:left}
+.direct-stage-heading{text-align:center;margin-bottom:16px}
+.direct-stage-heading p{color:#b7a6a8;font-size:12px;line-height:1.5;margin:8px auto;max-width:620px}
+.direct-stage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.direct-stage-card{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:7px;min-height:132px;padding:16px;background:linear-gradient(145deg,#211719,#111114);border:1px solid #553238;border-radius:4px;text-align:left;letter-spacing:normal;box-shadow:0 8px 22px #0006}
+.direct-stage-card:hover{border-color:#b64a52;filter:brightness(1.12)}
+.direct-stage-card.selected{border-color:#e26a70;background:linear-gradient(145deg,#3b1d21,#171316);box-shadow:inset 0 0 0 1px #e26a7040,0 0 18px #a92d3526}
+.direct-stage-number{font-size:10px;font-weight:950;letter-spacing:.2em;color:#e26a70}
+.direct-stage-card strong{font-size:14px;color:#f3e8e8}
+.direct-stage-card small{font-size:10px;font-weight:500;letter-spacing:.04em;color:#a99b9d}
+.direct-stage-card em{margin-top:auto;font-size:9px;font-style:normal;font-weight:950;letter-spacing:.16em;color:#f08b90}
+@media(max-width:700px){.direct-stage-menu{margin-top:28px}.direct-stage-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.direct-stage-card{min-height:124px;padding:12px}.direct-stage-card strong{font-size:12px}.title-content{padding:30px 14px}.title-subtitle{margin-bottom:28px}}
+@media(max-width:390px){.direct-stage-grid{grid-template-columns:1fr}.direct-stage-card{min-height:105px}}
