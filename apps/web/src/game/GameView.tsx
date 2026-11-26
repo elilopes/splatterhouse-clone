@@ -2070,8 +2070,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       if(onUpperGallery&&stairX<=1.85&&stairZ<=-16.3){
         enterPhase3();
       }
-    }else{
-      player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-2.76,2.76);
+    }else if(phase===3){      player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-2.76,2.76);
       player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-38.2,29.1);
       player.current.position.y=0;
       player.current.visible=true;
