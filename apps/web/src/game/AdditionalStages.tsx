@@ -86,13 +86,14 @@ export function UndergroundDungeon() {
   </group>;
 }
 
-export function HauntedCemetery() {
+export function HauntedCemetery({destroyedGraves}:{destroyedGraves:Set<number>}) {
   return <group>
     <color attach="background" args={["#090b12"]}/>
     <Stone position={[0,-0.3,0]} scale={[130,0.6,18]} color="#29272a"/>
     <mesh position={[0,0.02,0]} rotation={[-Math.PI/2,0,0]}><planeGeometry args={[130,18]}/><meshStandardMaterial color="#37302d" roughness={1}/></mesh>
     {Array.from({length:27},(_,i)=>{
       const x=-34+i*3.45,z=(i%3-1)*1.0,broken=i%6===0;
+      if(destroyedGraves.has(i))return null;
       return <group key={i} position={[x,0,z]} rotation={[0,(i%5-2)*0.07,0]}>
         <mesh position={[0,0.65,0]} rotation={[broken?0.18:0,0,0]} castShadow><boxGeometry args={[0.82,1.3,0.24]}/><meshStandardMaterial color={broken?"#4b4548":"#777174"} roughness={1}/></mesh>
         <mesh position={[0,1.34,0]}><boxGeometry args={[0.98,0.14,0.32]}/><meshStandardMaterial color="#5c5559"/></mesh>
