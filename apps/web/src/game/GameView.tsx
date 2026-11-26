@@ -26,7 +26,7 @@ type BodyState = "alive" | "wallFlying" | "wallStuck" | "falling" | "fallen" | "
 type EnemyState = {
   id:number; x:number; y:number; z:number; health:number; alive:boolean; kind:EnemyKind;
   knocked:number; vx:number; vy:number; vz:number; fall:number; animation:number;
-  activated:boolean; bodyState:BodyState; stickRot:number; targetZ:number; headless:boolean; severedArm:boolean; grabTimer:number; spitCooldown:number;
+  activated:boolean; bodyState:BodyState; stickRot:number; targetZ:number; headless:boolean; severedArm:boolean; grabTimer:number; spitCooldown:number; boss:boolean;
 };
 type SpitProjectile = {id:number;x:number;y:number;z:number;vx:number;vy:number;vz:number;age:number};
 type SpitSplash = {id:number;x:number;z:number;age:number};
@@ -49,7 +49,7 @@ type TpsHudState = {
 
 const makeEnemy = (id:number, x:number, z:number, kind:EnemyKind, animation:number, activated=false): EnemyState => ({
   id, x, y:0, z, health:kind==="crawler"?1:2, alive:true, kind, knocked:0,
-  vx:0, vy:0, vz:0, fall:0, animation, activated, bodyState:"alive", stickRot:0, targetZ:-1.72, headless:false, severedArm:false, grabTimer:0, spitCooldown:1.1+Math.random()*1.4
+  vx:0, vy:0, vz:0, fall:0, animation, activated, bodyState:"alive", stickRot:0, targetZ:-1.72, headless:false, severedArm:false, grabTimer:0, spitCooldown:1.1+Math.random()*1.4, boss:false
 });
 
 const initialEnemies: EnemyState[] = [
@@ -647,12 +647,12 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   };
 
   const enterPhase4=()=>{
-    if(!player.current)return;onStageLoading();setPhase(4);onStageChange(4);
+    if(!player.current)return;onStageLoading();setPhase(4);onStageChange(4);phase3ClearedSent.current=false;
     player.current.position.set(0,0,17);player.current.rotation.set(0,0,0);player.current.visible=true;
     attackDirection.current={x:0,z:-1};upperDeckAccess.current=false;
     enemies.current=[];severedHeads.current=[];bloodPools.current=[];effects.current=[];tracers.current=[];
-    const wave:[number,number,EnemyKind][]=[[-4,-7,"crawler"],[4,-10,"spitter"],[-3,-15,"brute"],[3,-17,"crawler"]];
-    wave.forEach((p,i)=>enemies.current.push(makeEnemy(nextEnemyId.current++,p[0],p[1],p[2],i*1.2,true)));setEnemyVersion(v=>v+1);
+    const wave:[number,number,EnemyKind][]=[[-4,-7,"crawler"],[4,-10,"spitter"],[-3,-15,"brute"],[0,-17,"brute"]];
+    wave.forEach((p,i)=>{const enemy=makeEnemy(nextEnemyId.current++,p[0],p[1],p[2],i*1.2,true);if(i===3){enemy.boss=true;enemy.health=12;}enemies.current.push(enemy);});setEnemyVersion(v=>v+1);
   };
   const enterPhase5=()=>{
     if(!player.current)return;onStageLoading();setPhase(5);onStageChange(5);
@@ -664,12 +664,12 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     camera.position.set(-30,4.6,18);camera.lookAt(-30,3.2,0);setEnemyVersion(v=>v+1);
   };
   const enterPhase6=()=>{
-    if(!player.current)return;onStageLoading();setPhase(6);onStageChange(6);
+    if(!player.current)return;onStageLoading();setPhase(6);onStageChange(6);phase3ClearedSent.current=false;
     player.current.position.set(-30,0,0);player.current.rotation.set(0,0,0);player.current.visible=true;
     attackDirection.current={x:1,z:0};facing.current=1;
     enemies.current=[];severedHeads.current=[];bloodPools.current=[];effects.current=[];tracers.current=[];
     const wave:[number,EnemyKind][]=[[-16,"crawler"],[-5,"spitter"],[9,"brute"],[23,"crawler"],[38,"brute"],[54,"spitter"]];
-    wave.forEach((p,i)=>enemies.current.push(makeEnemy(nextEnemyId.current++,p[0],0,p[1],i*1.3,true)));
+    wave.forEach((p,i)=>{const enemy=makeEnemy(nextEnemyId.current++,p[0],0,p[1],i*1.3,true);if(i===5){enemy.boss=true;enemy.health=16;}enemies.current.push(enemy);});
     camera.position.set(-30,4.6,18);camera.lookAt(-30,3.2,0);setEnemyVersion(v=>v+1);
   };
 
@@ -2190,8 +2190,13 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       </mesh>
     ))}
 
-    {enemies.current.map((e)=>(e.alive||e.bodyState!=="alive")&&(phase!==1||e.id>14||initialEnemiesVisible)&&<group key={e.id} ref={node=>{enemyGroups.current[e.id]=node;}} position={[e.x,e.y,e.z]}>
+    {enemies.current.map((e)=>(e.alive||e.bodyState!=="alive")&&(phase!==1||e.id>14||initialEnemiesVisible)&&<group key={e.id} ref={node=>{enemyGroups.current[e.id]=node;}} position={[e.x,e.y,e.z]} scale={e.boss?2.15:1}>
       <MonsterProceduralCharacter kind={e.kind} headless={e.headless} missingArm={e.severedArm} missingLeg={e.bodyState==="wallStuck"} brokenHead={e.bodyState==="wallStuck"} pinned={e.bodyState==="wallStuck"} animation={e.animation} moving={e.alive&&(e.activated||Math.abs(e.vx)>0.08||Math.abs(e.vz)>0.08)} fallen={e.bodyState==="fallen"||e.bodyState==="grabFallen"||e.bodyState==="grabInvertFallen"||e.bodyState==="macheteFalling"} dissolve={e.bodyState==="grabMelting" ? THREE.MathUtils.clamp(e.grabTimer/1.05,0,1) : e.bodyState==="macheteMelting" ? THREE.MathUtils.clamp(e.grabTimer/0.92,0,1) : 0} attackPulse={e.knocked>0?THREE.MathUtils.clamp(e.knocked/0.65,0,1):e.bodyState==="grabLift"||e.bodyState==="grabThrown"||e.bodyState==="grabInvertLift"||e.bodyState==="grabInvertSlam"||e.bodyState==="wallFlying"?1:0}/>
+      {e.boss&&<group>
+        <mesh position={[-0.42,0.52,0.2]} rotation={[0.2,0.3,0.4]}><boxGeometry args={[0.34,0.42,0.3]}/><meshStandardMaterial color="#6b4842" roughness={0.9}/></mesh>
+        <mesh position={[0.46,0.78,-0.08]} rotation={[0.4,0.1,-0.3]}><boxGeometry args={[0.28,0.5,0.26]}/><meshStandardMaterial color="#8a6251" roughness={0.9}/></mesh>
+        <mesh position={[0,1.35,0.18]}><sphereGeometry args={[0.22,10,8]}/><meshStandardMaterial color="#b5a38b" roughness={0.9}/></mesh>
+      </group>}
       {e.bodyState==="wallStuck"&&<mesh position={[0,0.95,-0.25]}><circleGeometry args={[1.05,16]}/><meshStandardMaterial color="#4a0911" roughness={0.35}/></mesh>}
     </group>)}
 
