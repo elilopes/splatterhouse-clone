@@ -534,6 +534,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   const facing=useRef(1);
   const attackDirection=useRef({x:1,z:0});
   const upperDeckAccess=useRef(false);
+  const basementKeyCollected=useRef(false);
   const attackCooldown=useRef(0),grabCooldown=useRef(0),slideCooldown=useRef(0),jumpVelocity=useRef(0),grounded=useRef(true);const specialJumpActive=useRef(false),specialJumpVel=useRef({x:0,z:0}),specialJumpCooldown=useRef(0),escorraoCooldown=useRef(0),escorraoVel=useRef({x:0,z:0}),escorraoHitIds=useRef(new Set<number>());
   const [,setEnemyVersion]=useState(0);
   const lastActions=useRef({attack:false,grab:false,jump:false,pickup:false,slide:false,sweep:false,superJump:false,escorrao:false,headKick:false});
@@ -647,7 +648,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   };
 
   const enterPhase4=()=>{
-    if(!player.current)return;onStageLoading();setPhase(4);onStageChange(4);phase3ClearedSent.current=false;
+    if(!player.current)return;onStageLoading();setPhase(4);onStageChange(4);phase3ClearedSent.current=false;basementKeyCollected.current=false;
     player.current.position.set(0,0,17);player.current.rotation.set(0,0,0);player.current.visible=true;
     attackDirection.current={x:0,z:-1};upperDeckAccess.current=false;
     enemies.current=[];severedHeads.current=[];bloodPools.current=[];effects.current=[];tracers.current=[];
@@ -2049,6 +2050,9 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     spitSplashes.current=spitSplashes.current.filter(s=>s.age<1.35);
     if(landedSpit||beforeSplashes!==spitSplashes.current.length)setEnemyVersion(v=>v+1);
 
+    if(phase===4&&!basementKeyCollected.current&&Math.hypot(player.current.position.x-4,player.current.position.z-11)<1.15){
+      basementKeyCollected.current=true;spawnSparks(4,0.9,11);setEnemyVersion(v=>v+1);
+    }
     if(phase===1){
       player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-25.5,63.8);
       if(player.current.position.x>=62.5){
@@ -2070,7 +2074,8 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       if(onUpperGallery&&stairX<=1.85&&stairZ<=-16.3){
         enterPhase3();
       }
-    }else if(phase===3){      player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-2.76,2.76);
+    }else if(phase===3){
+      player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-2.76,2.76);
       player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-38.2,29.1);
       player.current.position.y=0;
       player.current.visible=true;
@@ -2081,13 +2086,13 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-5.35,5.35);
       player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-19.0,19.0);
       player.current.position.y=0;player.current.visible=true;
-      if(player.current.position.z<=-18.3&&Math.abs(player.current.position.x)<2.4)enterPhase5();
+      if(player.current.position.z<=-18.3&&Math.abs(player.current.position.x)<2.4&&basementKeyCollected.current&&!enemies.current.some(e=>e.boss&&e.alive))enterPhase5();
     }else{
       player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-32.0,65.0);
       player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-1.35,1.35);
       player.current.position.y=0;player.current.visible=true;
       if(phase===5&&player.current.position.x>=63.5)enterPhase6();
-      if(phase===6&&player.current.position.x>=63.5&&!phase3ClearedSent.current){phase3ClearedSent.current=true;onPhase3Clear?.();}
+      if(phase===6&&player.current.position.x>=63.5&&!enemies.current.some(e=>e.boss&&e.alive)&&!phase3ClearedSent.current){phase3ClearedSent.current=true;onPhase3Clear?.();}
     }
 
     const targetX=player.current.position.x;
@@ -2178,6 +2183,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       ))}
     </>}
     {phase===1?<Exterior/>:phase===2?<MansionRoom player={player}/>:phase===3?<MansionCorridor3 openedDoorsRef={openedCorridorDoors}/>:phase===4?<MansionBasement/>:phase===5?<UndergroundDungeon/>:<HauntedCemetery/>}
+    {phase===4&&!basementKeyCollected.current&&<group position={[4,0.7,11]}><mesh rotation={[Math.PI/2,0,0]}><torusGeometry args={[0.28,0.055,8,18]}/><meshStandardMaterial color="#d9b44e" metalness={0.72} roughness={0.25} emissive="#6d4a12" emissiveIntensity={0.55}/></mesh><mesh position={[0,-0.22,0]} rotation={[0,0,Math.PI/2]}><cylinderGeometry args={[0.035,0.035,0.55,8]}/><meshStandardMaterial color="#c8a044" metalness={0.72}/></mesh><pointLight intensity={0.8} distance={3} color="#e4b84d"/></group>}
     {phase===1&&<group position={[-24,0,0]}><mesh position={[0,0.02,0]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[0.48,0.56,32]}/><meshBasicMaterial color="#7d342d"/></mesh></group>}
     <group ref={player}>{useHDCharacter
       ? <RickTaylorCharacter3DHDPlayer motion={motion.current} equippedWeapon={equipped}/>
