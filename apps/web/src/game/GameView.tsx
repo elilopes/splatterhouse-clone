@@ -646,6 +646,33 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     setEnemyVersion(v=>v+1);
   };
 
+  const enterPhase4=()=>{
+    if(!player.current)return;onStageLoading();setPhase(4);onStageChange(4);
+    player.current.position.set(0,0,17);player.current.rotation.set(0,0,0);player.current.visible=true;
+    attackDirection.current={x:0,z:-1};upperDeckAccess.current=false;
+    enemies.current=[];severedHeads.current=[];bloodPools.current=[];effects.current=[];tracers.current=[];
+    const wave:[number,number,EnemyKind][]=[[-4,-7,"crawler"],[4,-10,"spitter"],[-3,-15,"brute"],[3,-17,"crawler"]];
+    wave.forEach((p,i)=>enemies.current.push(makeEnemy(nextEnemyId.current++,p[0],p[1],p[2],i*1.2,true)));setEnemyVersion(v=>v+1);
+  };
+  const enterPhase5=()=>{
+    if(!player.current)return;onStageLoading();setPhase(5);onStageChange(5);
+    player.current.position.set(-30,0,0);player.current.rotation.set(0,0,0);player.current.visible=true;
+    attackDirection.current={x:1,z:0};facing.current=1;
+    enemies.current=[];severedHeads.current=[];bloodPools.current=[];effects.current=[];tracers.current=[];
+    const wave:[number,EnemyKind][]=[[-15,"crawler"],[-4,"brute"],[10,"spitter"],[24,"crawler"],[39,"brute"]];
+    wave.forEach((p,i)=>enemies.current.push(makeEnemy(nextEnemyId.current++,p[0],0,p[1],i*1.1,true)));
+    camera.position.set(-30,4.6,18);camera.lookAt(-30,3.2,0);setEnemyVersion(v=>v+1);
+  };
+  const enterPhase6=()=>{
+    if(!player.current)return;onStageLoading();setPhase(6);onStageChange(6);
+    player.current.position.set(-30,0,0);player.current.rotation.set(0,0,0);player.current.visible=true;
+    attackDirection.current={x:1,z:0};facing.current=1;
+    enemies.current=[];severedHeads.current=[];bloodPools.current=[];effects.current=[];tracers.current=[];
+    const wave:[number,EnemyKind][]=[[-16,"crawler"],[-5,"spitter"],[9,"brute"],[23,"crawler"],[38,"brute"],[54,"spitter"]];
+    wave.forEach((p,i)=>enemies.current.push(makeEnemy(nextEnemyId.current++,p[0],0,p[1],i*1.3,true)));
+    camera.position.set(-30,4.6,18);camera.lookAt(-30,3.2,0);setEnemyVersion(v=>v+1);
+  };
+
   useEffect(()=>{
     const spawnTimer=window.setTimeout(()=>setInitialEnemiesVisible(true),2000);
     return ()=>window.clearTimeout(spawnTimer);
@@ -663,6 +690,9 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     rickVisibleSent.current=false;
     rickReadyFrames.current=0;
     onStageLoading();
+    if(initialStage===6){enterPhase6();return;}
+    if(initialStage===5){enterPhase5();return;}
+    if(initialStage===4){enterPhase4();return;}
     if(initialStage===3){
       enterPhase3();
       return;
@@ -1370,8 +1400,8 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
         const stepX=(moving?v.x*4.25*airScale*dt:0)+(airSuperLeap?specialJumpVel.current.x*dt:0)+(escorraoSliding?escorraoVel.current.x*dt:0);
         const depthSpeed=phase===2?4.25:2.1;
         const stepZ=(moving?v.z*depthSpeed*airScale*dt:0)+(airSuperLeap?specialJumpVel.current.z*dt:0)+(escorraoSliding?escorraoVel.current.z*dt:0);
-        if(phase===1){
-          player.current.position.x+=stepX;
+        if(phase===1||phase===5||phase===6){
+          player.current.position.x=THREE.MathUtils.clamp(player.current.position.x+stepX,-32.0,65.0);
           player.current.position.z=THREE.MathUtils.clamp(player.current.position.z+stepZ,-1.35,1.35);
         }else{
           const px=player.current.position.x,pz=player.current.position.z,py=player.current.position.y;
@@ -1413,7 +1443,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
         }
         if(moving){
           if(Math.abs(dx)>0.05)facing.current=dx>0?1:-1;
-          if(phase===1){
+          if(phase===1||phase===5||phase===6){
             attackDirection.current={x:facing.current,z:0};
             player.current.rotation.y=facing.current>0?-Math.PI/2:Math.PI/2;
           }else{
@@ -1922,9 +1952,10 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
           e.x=THREE.MathUtils.clamp(e.x,-2.85,2.85);
         }
         e.z=THREE.MathUtils.clamp(e.z,-38.0,28.5);
+      }else if(phase===1||phase===5||phase===6){
+        e.x=THREE.MathUtils.clamp(e.x,-32.0,65.0);e.z=THREE.MathUtils.clamp(e.z,-1.35,1.35);
       }else{
-        e.x=THREE.MathUtils.clamp(e.x,phase===1?-25.2:-15.5,phase===1?61.5:15.5);
-        e.z=THREE.MathUtils.clamp(e.z,phase===1?-1.35:-16.2,phase===1?1.35:25.5);
+        e.x=THREE.MathUtils.clamp(e.x,-15.5,15.5);e.z=THREE.MathUtils.clamp(e.z,-19.5,25.5);
       }
       group.position.x=e.x;group.position.z=e.z;
     });
@@ -2045,9 +2076,19 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       player.current.position.y=0;
       player.current.visible=true;
       if(!phase3ClearedSent.current&&player.current.position.z<=-37.1&&Math.abs(player.current.position.x)<=1.85){
-        phase3ClearedSent.current=true;
-        onPhase3Clear?.();
+        phase3ClearedSent.current=true;enterPhase4();
       }
+    }else if(phase===4){
+      player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-5.35,5.35);
+      player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-19.0,19.0);
+      player.current.position.y=0;player.current.visible=true;
+      if(player.current.position.z<=-18.3&&Math.abs(player.current.position.x)<2.4)enterPhase5();
+    }else{
+      player.current.position.x=THREE.MathUtils.clamp(player.current.position.x,-32.0,65.0);
+      player.current.position.z=THREE.MathUtils.clamp(player.current.position.z,-1.35,1.35);
+      player.current.position.y=0;player.current.visible=true;
+      if(phase===5&&player.current.position.x>=63.5)enterPhase6();
+      if(phase===6&&player.current.position.x>=63.5&&!phase3ClearedSent.current){phase3ClearedSent.current=true;onPhase3Clear?.();}
     }
 
     const targetX=player.current.position.x;
