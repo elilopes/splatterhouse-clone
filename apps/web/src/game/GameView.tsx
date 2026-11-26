@@ -670,7 +670,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     attackDirection.current={x:1,z:0};facing.current=1;
     enemies.current=[];severedHeads.current=[];bloodPools.current=[];effects.current=[];tracers.current=[];
     const wave:[number,EnemyKind][]=[[-16,"crawler"],[-5,"spitter"],[9,"brute"],[23,"crawler"],[38,"brute"],[54,"spitter"]];
-    wave.forEach((p,i)=>{const enemy=makeEnemy(nextEnemyId.current++,p[0],0,p[1],i*1.3,true);if(i===5){enemy.boss=true;enemy.health=16;}enemies.current.push(enemy);});
+    wave.forEach((p,i)=>{const enemy=makeEnemy(nextEnemyId.current++,p[0],0,p[1],i*1.3,true);enemy.y=-1.25;if(i===5){enemy.boss=true;enemy.health=16;}enemies.current.push(enemy);});
     camera.position.set(-30,4.6,18);camera.lookAt(-30,3.2,0);setEnemyVersion(v=>v+1);
   };
 
@@ -1879,6 +1879,12 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
         return;
       }
       if(!e.alive||!group)return;
+      if(e.y<0){
+        e.y=Math.min(0,e.y+dt*1.7);
+        group.position.set(e.x,e.y,e.z);
+        group.rotation.z=THREE.MathUtils.damp(group.rotation.z,0,5,dt);
+        return;
+      }
       e.animation+=dt*(e.kind==="crawler"?8:e.kind==="brute"?3.2:5);
       e.spitCooldown=Math.max(0,e.spitCooldown-dt);
       if(e.knocked>0){
