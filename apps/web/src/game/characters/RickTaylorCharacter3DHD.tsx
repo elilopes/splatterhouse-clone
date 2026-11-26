@@ -114,7 +114,8 @@ export type RickMotion = {
   jumpHeight: number;
   weapon: RickWeaponId | null;
   slideTime?: number;
-  specialMove?: "slide" | "sweep" | "escorrao" | "superJump" | "impact" | "headKick" | null;
+  specialMove?: "slide" | "sweep" | "escorrao" | "superJump" | "impact" | "headKick" | "pickup" | "throw" | null;
+  actionProgress?: number;
   superJumpTuck?: boolean;
   grabStyle?: "throw" | "piledriver" | null;
   shotgunAimPitch?: number;
@@ -1971,7 +1972,18 @@ export function RickTaylorRig({
     const escorraoActive = motion.specialMove === "escorrao";
     const headKickActive = motion.specialMove === "headKick" && motion.attackTime > 0;
 
-    const skel = skinnedUpperBody.skeleton;
+    const objectActionActive = motion.specialMove === "pickup" || motion.specialMove === "throw";
+    const objectProgress = THREE.MathUtils.clamp(motion.actionProgress ?? 0, 0, 1);
+    let objectCrouch = 0;
+    if (objectActionActive && motion.specialMove === "pickup") {
+      if (objectProgress < 0.52) { const reach=objectProgress/0.52; const ease=reach*reach*(3-2*reach); objectCrouch=ease; torsoRotX=THREE.MathUtils.lerp(0.02,-0.52,ease); torsoRotY=THREE.MathUtils.lerp(0,-0.09,ease); rShoulderX=THREE.MathUtils.lerp(0.12,1.24,ease); rShoulderZ=THREE.MathUtils.lerp(0.06,-0.16,ease); rElbowX=THREE.MathUtils.lerp(0.52,1.48,ease); lShoulderX=THREE.MathUtils.lerp(0.28,0.72,ease); lShoulderZ=0.16; lElbowX=1.02; }
+      else { const rise=(objectProgress-0.52)/0.48; const ease=rise*rise*(3-2*rise); objectCrouch=1-ease; torsoRotX=THREE.MathUtils.lerp(-0.52,0.02,ease); rShoulderX=THREE.MathUtils.lerp(1.24,0.16,ease); rShoulderZ=THREE.MathUtils.lerp(-0.16,-0.06,ease); rElbowX=THREE.MathUtils.lerp(1.48,0.54,ease); lShoulderX=THREE.MathUtils.lerp(0.72,0.28,ease); lShoulderZ=THREE.MathUtils.lerp(0.16,-0.06,ease); lElbowX=THREE.MathUtils.lerp(1.02,0.72,ease); }
+    } else if (objectActionActive && motion.specialMove === "throw") {
+      if (objectProgress < 0.36) { const load=objectProgress/0.36; const ease=load*load*(3-2*load); torsoRotY=THREE.MathUtils.lerp(0,-0.48,ease); torsoRotX=THREE.MathUtils.lerp(0.02,0.16,ease); rShoulderX=THREE.MathUtils.lerp(0.16,-0.78,ease); rShoulderZ=THREE.MathUtils.lerp(-0.06,-0.38,ease); rElbowX=THREE.MathUtils.lerp(0.54,1.62,ease); lShoulderX=THREE.MathUtils.lerp(0.28,0.82,ease); lShoulderZ=0.18; lElbowX=1.02; }
+      else if (objectProgress < 0.72) { const release=(objectProgress-0.36)/0.36; const ease=1-Math.pow(1-release,3); torsoRotY=THREE.MathUtils.lerp(-0.48,0.62,ease); torsoRotX=THREE.MathUtils.lerp(0.16,-0.12,ease); rShoulderX=THREE.MathUtils.lerp(-0.78,1.48,ease); rShoulderZ=THREE.MathUtils.lerp(-0.38,0.24,ease); rElbowX=THREE.MathUtils.lerp(1.62,0.14,ease); lShoulderX=THREE.MathUtils.lerp(0.82,-0.12,ease); lShoulderZ=0.08; lElbowX=0.82; }
+      else { const recover=(objectProgress-0.72)/0.28; const ease=recover*recover*(3-2*recover); torsoRotY=THREE.MathUtils.lerp(0.62,0,ease); torsoRotX=THREE.MathUtils.lerp(-0.12,0.02,ease); rShoulderX=THREE.MathUtils.lerp(1.48,0.12,ease); rShoulderZ=THREE.MathUtils.lerp(0.24,0.06,ease); rElbowX=THREE.MathUtils.lerp(0.14,0.52,ease); lShoulderX=THREE.MathUtils.lerp(-0.12,0.28,ease); lShoulderZ=THREE.MathUtils.lerp(0.08,-0.06,ease); lElbowX=THREE.MathUtils.lerp(0.82,0.72,ease); }
+    }
+const skel = skinnedUpperBody.skeleton;
     if (skel && skel.bones.length >= 13) {
       const [
         hipsBone,
@@ -1990,7 +2002,7 @@ export function RickTaylorRig({
       ] = skel.bones;
 
       const bounceY = motion.moving ? Math.abs(Math.sin(phase * 2)) * 0.045 : Math.sin(t * 1.7) * 0.009;
-      hipsBone.position.y = 1.05 + bounceY;
+      hipsBone.position.y = 1.05 + bounceY - objectCrouch * 0.22;
 
       const shotgunFiring = activeWeapon === "shotgun" && motion.attackTime > 0;
       const superJumpAir = motion.specialMove === "superJump" && motion.jumpHeight > 0.05;
@@ -2048,7 +2060,7 @@ export function RickTaylorRig({
 
       neckBone.rotation.y = THREE.MathUtils.damp(neckBone.rotation.y, -torsoRotY * 0.25, 14, dt);
       headBone.rotation.y = THREE.MathUtils.damp(headBone.rotation.y, -torsoRotY * 0.4, 14, dt);
-      headBone.rotation.x = THREE.MathUtils.damp(headBone.rotation.x, grab * 0.08 - torsoRotX * 0.35, 10, dt);
+      headBone.rotation.x = THREE.MathUtils.damp(headBone.rotation.x, grab * 0.08 - torsoRotX * 0.35 - objectCrouch * 0.24, 10, dt);
 
       leftShoulderBone.rotation.x = THREE.MathUtils.damp(
         leftShoulderBone.rotation.x,
@@ -2076,25 +2088,25 @@ export function RickTaylorRig({
       const superJumpKnee = superJumpTucked ? -1.78 : -0.22;
       leftThighBone.rotation.x = THREE.MathUtils.damp(
         leftThighBone.rotation.x,
-        headKickActive ? kickThigh : escorraoActive ? 0.48 : piledriverCrouch > 0.02 ? piledriverCrouch * 0.78 : sweeping ? 1.18 : motion.specialMove === "superJump" ? superJumpThigh : motion.specialMove === "impact" ? 0.72 : sliding ? 0.78 : motion.moving ? stride * 0.48 : 0.015 * Math.sin(t),
+        headKickActive ? kickThigh : objectCrouch > 0.02 ? objectCrouch * 0.74 : escorraoActive ? 0.48 : piledriverCrouch > 0.02 ? piledriverCrouch * 0.78 : sweeping ? 1.18 : motion.specialMove === "superJump" ? superJumpThigh : motion.specialMove === "impact" ? 0.72 : sliding ? 0.78 : motion.moving ? stride * 0.48 : 0.015 * Math.sin(t),
         legDamp,
         dt
       );
       rightThighBone.rotation.x = THREE.MathUtils.damp(
         rightThighBone.rotation.x,
-        headKickActive ? -0.16 : escorraoActive ? -0.62 : piledriverCrouch > 0.02 ? piledriverCrouch * 0.78 : sweeping ? -0.72 : motion.specialMove === "superJump" ? superJumpThigh : motion.specialMove === "impact" ? 0.72 : sliding ? 0.55 : motion.moving ? oppositeStride * 0.48 : -0.015 * Math.sin(t),
+        headKickActive ? -0.16 : objectCrouch > 0.02 ? objectCrouch * 0.74 : escorraoActive ? -0.62 : piledriverCrouch > 0.02 ? piledriverCrouch * 0.78 : sweeping ? -0.72 : motion.specialMove === "superJump" ? superJumpThigh : motion.specialMove === "impact" ? 0.72 : sliding ? 0.55 : motion.moving ? oppositeStride * 0.48 : -0.015 * Math.sin(t),
         legDamp,
         dt
       );
       leftKneeBone.rotation.x = THREE.MathUtils.damp(
         leftKneeBone.rotation.x,
-        headKickActive ? kickKnee : escorraoActive ? -0.68 : piledriverCrouch > 0.02 ? -piledriverCrouch * 1.25 : sweeping ? -0.35 : motion.specialMove === "superJump" ? superJumpKnee : motion.specialMove === "impact" ? -1.15 : sliding ? -0.18 : motion.moving ? -swing * 0.82 : 0,
+        headKickActive ? kickKnee : objectCrouch > 0.02 ? -objectCrouch * 1.08 : escorraoActive ? -0.68 : piledriverCrouch > 0.02 ? -piledriverCrouch * 1.25 : sweeping ? -0.35 : motion.specialMove === "superJump" ? superJumpKnee : motion.specialMove === "impact" ? -1.15 : sliding ? -0.18 : motion.moving ? -swing * 0.82 : 0,
         kneeDamp,
         dt
       );
       rightKneeBone.rotation.x = THREE.MathUtils.damp(
         rightKneeBone.rotation.x,
-        headKickActive ? -0.18 : escorraoActive ? -0.38 : piledriverCrouch > 0.02 ? -piledriverCrouch * 1.25 : sweeping ? -0.95 : motion.specialMove === "superJump" ? superJumpKnee : motion.specialMove === "impact" ? -1.15 : sliding ? -0.18 : motion.moving ? -oppositeSwing * 0.82 : 0,
+        headKickActive ? -0.18 : objectCrouch > 0.02 ? -objectCrouch * 1.08 : escorraoActive ? -0.38 : piledriverCrouch > 0.02 ? -piledriverCrouch * 1.25 : sweeping ? -0.95 : motion.specialMove === "superJump" ? superJumpKnee : motion.specialMove === "impact" ? -1.15 : sliding ? -0.18 : motion.moving ? -oppositeSwing * 0.82 : 0,
         kneeDamp,
         dt
       );
@@ -2227,7 +2239,7 @@ export function RickTaylorRig({
       muzzleRef.current.visible =
         activeWeapon === "shotgun" && motion.attackTime > 0 && p >= 0.18 && p <= 0.4;
     }
-    root.current.position.y = motion.jumpHeight - sliding*0.48 - sweeping*0.08 - (escorraoActive?0.14:0) - piledriverCrouch*0.24;
+    root.current.position.y = motion.jumpHeight - sliding*0.48 - sweeping*0.08 - (escorraoActive?0.14:0) - piledriverCrouch*0.24 - objectCrouch*0.18;
     root.current.rotation.x = THREE.MathUtils.damp(root.current.rotation.x,sliding*0.18+sweeping*0.06+(escorraoActive?0.16:0)+(headKickActive?-0.12:0),18,dt);
   });
 
