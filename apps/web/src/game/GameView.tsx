@@ -501,6 +501,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   const player=useRef<THREE.Group>(null);
   const hdZoomCurrent=useRef(1);
   const enemyGroups=useRef<Record<number, THREE.Group|null>>({});
+  const throwableGroups=useRef<Record<number,THREE.Group|null>>({});
   const headGroups=useRef<Record<number, THREE.Group|null>>({});
   const effectGroups=useRef<Record<number, THREE.Group|null>>({});
   const tracerGroups=useRef<Record<number, THREE.Mesh|null>>({});
@@ -2111,6 +2112,8 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
         }else if(item.y<=0.18){item.y=0.18;item.vy=0;item.vx*=0.25;item.vz*=0.25;if(item.age>0.8){item.thrown=false;item.age=99;}}
         if(item.age>3.2){item.thrown=false;item.age=99;}
       }
+      const itemGroup=throwableGroups.current[item.id];
+      if(itemGroup){itemGroup.position.set(item.x,item.y,item.z);itemGroup.rotation.set(0,item.rotation+item.age*5,item.thrown?item.age*7:0);}
     }
     const throwableCount=throwableItems.current.length;
     throwableItems.current=throwableItems.current.filter(v=>v.age<99);
@@ -2316,7 +2319,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       <mesh position={[0,0.035,0]} scale={[0.7,0.18,0.7]}><sphereGeometry args={[0.38,16,10]}/><meshStandardMaterial color="#9bd72b" roughness={0.2}/></mesh>
     </group>)}
 
-    {throwableItems.current.map(item=><group key={`throwable-${item.id}`} position={[item.x,item.y,item.z]} rotation={[0,item.rotation+item.age*5,item.thrown?item.age*7:0]}>
+    {throwableItems.current.map(item=><group key={`throwable-${item.id}`} ref={node=>{throwableGroups.current[item.id]=node;}} position={[item.x,item.y,item.z]} rotation={[0,item.rotation+item.age*5,item.thrown?item.age*7:0]}>
       {item.kind==="head"?<mesh castShadow><sphereGeometry args={[0.22,14,12]}/><meshStandardMaterial color="#9a5d50" roughness={0.78}/></mesh>:item.kind==="arm"?<group rotation={[0,0,Math.PI/2]}><mesh castShadow><capsuleGeometry args={[0.12,0.48,6,10]}/><meshStandardMaterial color="#8e5141" roughness={0.8}/></mesh><mesh position={[0.32,0,0]}><sphereGeometry args={[0.13,10,8]}/><meshStandardMaterial color="#67252a"/></mesh></group>:item.kind==="bone"?<mesh rotation={[0,0,Math.PI/2]} castShadow><capsuleGeometry args={[0.1,0.48,5,9]}/><meshStandardMaterial color="#c7b99c" roughness={0.9}/></mesh>:item.kind==="stone"?<mesh castShadow><dodecahedronGeometry args={[0.3,0]}/><meshStandardMaterial color="#77716a" roughness={1}/></mesh>:<mesh castShadow><boxGeometry args={[0.58,0.58,0.58]}/><meshStandardMaterial color="#684b36" roughness={0.95}/></mesh>}
     </group>)}
     {phase===1&&pickups.current.map((p)=>!p.collected&&<group key={p.id} position={[p.x,0.16,p.z]}>
