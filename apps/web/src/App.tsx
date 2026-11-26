@@ -36,8 +36,9 @@ export default function App() {
     try { const result=await signInGuest(); await cloudSave(result.user.uid,progress); setMessage("Visitante autenticado e progresso sincronizado."); }
     catch(error){setMessage(error instanceof Error?error.message:"Falha na autenticação visitante.");}
   }
-  function startGame(){
-    setCurrentPhase(selectedStartStage);
+  function startGame(stage: 1 | 2 | 3 | 4 | 5 | 6 = selectedStartStage){
+    setSelectedStartStage(stage);
+    setCurrentPhase(stage);
     setPaused(false);
     setPhase3Cleared(false);
     setGameRunId(id=>id+1);
@@ -61,17 +62,21 @@ export default function App() {
                 <option value="high">Alta — Rick HD / WebGPU</option>
               </select>
               <small>Alta usa o modo padrão automaticamente se WebGPU não estiver disponível.</small>
-              <label htmlFor="start-stage" style={{marginTop:"8px"}}>Fase inicial</label>
-              <select id="start-stage" value={selectedStartStage} onChange={event=>setSelectedStartStage(Number(event.target.value) as 1|2|3|4|5|6)}>
-                <option value={1}>Fase 01 — Exterior (Rolagem 2,5D)</option>
-                <option value={2}>Fase 02 — Salão da Mansão (2,5D)</option>
-                <option value={3}>Fase 03 — Corredor dos Quartos (TPS)</option>
-                <option value={4}>Fase 04 — Porão da Mansão (Exploração 3D)</option>
-                <option value={5}>Fase 05 — Masmorra Subterrânea (Beat ’em up 2,5D)</option>
-                <option value={6}>Fase 06 — Cemitério (Beat ’em up 2,5D)</option>
-              </select>
             </div>
-            <button className="start-button" onClick={startGame}>INICIAR JOGO</button>
+            <section className="direct-stage-menu" aria-label="Iniciar uma fase diretamente">
+              <div className="direct-stage-heading">
+                <span className="eyebrow">SELEÇÃO DE FASE PARA TESTES</span>
+                <p>Escolha qualquer fase para iniciar diretamente. A progressão entre fases continua ativa durante a campanha.</p>
+              </div>
+              <div className="direct-stage-grid">
+                <button className={selectedStartStage===1?"direct-stage-card selected":"direct-stage-card"} onClick={()=>startGame(1)}><span className="direct-stage-number">01</span><strong>Exterior da mansão</strong><small>Beat ’em up · 2,5D</small><em>INICIAR FASE</em></button>
+                <button className={selectedStartStage===2?"direct-stage-card selected":"direct-stage-card"} onClick={()=>startGame(2)}><span className="direct-stage-number">02</span><strong>Salão da mansão</strong><small>Arena · 2,5D</small><em>INICIAR FASE</em></button>
+                <button className={selectedStartStage===3?"direct-stage-card selected":"direct-stage-card"} onClick={()=>startGame(3)}><span className="direct-stage-number">03</span><strong>Corredor dos quartos</strong><small>Combate · TPS</small><em>INICIAR FASE</em></button>
+                <button className={selectedStartStage===4?"direct-stage-card selected":"direct-stage-card"} onClick={()=>startGame(4)}><span className="direct-stage-number">04</span><strong>Porão da mansão</strong><small>Exploração e combate · 3D</small><em>INICIAR FASE</em></button>
+                <button className={selectedStartStage===5?"direct-stage-card selected":"direct-stage-card"} onClick={()=>startGame(5)}><span className="direct-stage-number">05</span><strong>Masmorra subterrânea</strong><small>Beat ’em up · 2,5D</small><em>INICIAR FASE</em></button>
+                <button className={selectedStartStage===6?"direct-stage-card selected":"direct-stage-card"} onClick={()=>startGame(6)}><span className="direct-stage-number">06</span><strong>Cemitério</strong><small>Beat ’em up · 2,5D</small><em>INICIAR FASE</em></button>
+              </div>
+            </section>
             <div className="title-account">
               <span>{message}</span>
               <div className="account-actions">
