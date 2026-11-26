@@ -535,6 +535,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   const attackDirection=useRef({x:1,z:0});
   const upperDeckAccess=useRef(false);
   const basementKeyCollected=useRef(false);
+  const destroyedGraves=useRef(new Set<number>());
   const attackCooldown=useRef(0),grabCooldown=useRef(0),slideCooldown=useRef(0),jumpVelocity=useRef(0),grounded=useRef(true);const specialJumpActive=useRef(false),specialJumpVel=useRef({x:0,z:0}),specialJumpCooldown=useRef(0),escorraoCooldown=useRef(0),escorraoVel=useRef({x:0,z:0}),escorraoHitIds=useRef(new Set<number>());
   const [,setEnemyVersion]=useState(0);
   const lastActions=useRef({attack:false,grab:false,jump:false,pickup:false,slide:false,sweep:false,superJump:false,escorrao:false,headKick:false});
@@ -665,7 +666,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     camera.position.set(-30,4.6,18);camera.lookAt(-30,3.2,0);setEnemyVersion(v=>v+1);
   };
   const enterPhase6=()=>{
-    if(!player.current)return;onStageLoading();setPhase(6);onStageChange(6);phase3ClearedSent.current=false;
+    if(!player.current)return;onStageLoading();setPhase(6);onStageChange(6);phase3ClearedSent.current=false;destroyedGraves.current.clear();
     player.current.position.set(-30,0,0);player.current.rotation.set(0,0,0);player.current.visible=true;
     attackDirection.current={x:1,z:0};facing.current=1;
     enemies.current=[];severedHeads.current=[];bloodPools.current=[];effects.current=[];tracers.current=[];
@@ -1101,6 +1102,23 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     setEnemyVersion(v=>v+1);
   };
 
+  const breakNearbyGrave=()=>{
+    if(phase!==6||!player.current)return false;
+    const px=player.current.position.x,pz=player.current.position.z;
+    let best=-1,bestDistance=1.8;
+    for(let i=0;i<27;i++){
+      if(destroyedGraves.current.has(i))continue;
+      const gx=-34+i*3.45,gz=(i%3-1)*1.0;
+      const distance=Math.hypot(px-gx,pz-gz);
+      if(distance<bestDistance){best=i;bestDistance=distance;}
+    }
+    if(best<0)return false;
+    destroyedGraves.current.add(best);
+    const gx=-34+best*3.45,gz=(best%3-1)*1.0;
+    spawnSparks(gx,0.65,gz);onScore(25);setEnemyVersion(v=>v+1);
+    return true;
+  };
+
   const doAttack=()=>{
     if(attackCooldown.current>0)return;
     if(phase===3&&equipped!=="sickle"){
@@ -1139,6 +1157,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       const pz=player.current?.position.z??0;
       const py=player.current?.position.y??0;
       const target=findShotgunTarget(px,pz);
+      if(!target)breakNearbyGrave();
       if(target){
         const dx=target.x-px;
         const dz=target.z-pz;
@@ -1159,7 +1178,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
     }
 
     const e=nearest(equipped==="machete"?2.35:1.65,2.0,equipped==="machete"?-0.35:-0.2);
-    if(!e)return;
+    if(!e){breakNearbyGrave();return;}
 
     if(equipped==="machete"||equipped==="sickle"){
       if(e.kind==="brute"&&e.health>1){
@@ -2188,7 +2207,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
         <pointLight key={`corridor-light-${lz}`} position={[0,3.55,lz]} intensity={14} distance={18} decay={1.65} color="#ffb37e"/>
       ))}
     </>}
-    {phase===1?<Exterior/>:phase===2?<MansionRoom player={player}/>:phase===3?<MansionCorridor3 openedDoorsRef={openedCorridorDoors}/>:phase===4?<MansionBasement/>:phase===5?<UndergroundDungeon/>:<HauntedCemetery/>}
+    {phase===1?<Exterior/>:phase===2?<MansionRoom player={player}/>:phase===3?<MansionCorridor3 openedDoorsRef={openedCorridorDoors}/>:phase===4?<MansionBasement/>:phase===5?<UndergroundDungeon/>:<HauntedCemetery destroyedGraves={destroyedGraves.current}/>}
     {phase===4&&!basementKeyCollected.current&&<group position={[4,0.7,11]}><mesh rotation={[Math.PI/2,0,0]}><torusGeometry args={[0.28,0.055,8,18]}/><meshStandardMaterial color="#d9b44e" metalness={0.72} roughness={0.25} emissive="#6d4a12" emissiveIntensity={0.55}/></mesh><mesh position={[0,-0.22,0]} rotation={[0,0,Math.PI/2]}><cylinderGeometry args={[0.035,0.035,0.55,8]}/><meshStandardMaterial color="#c8a044" metalness={0.72}/></mesh><pointLight intensity={0.8} distance={3} color="#e4b84d"/></group>}
     {phase===1&&<group position={[-24,0,0]}><mesh position={[0,0.02,0]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[0.48,0.56,32]}/><meshBasicMaterial color="#7d342d"/></mesh></group>}
     <group ref={player}>{useHDCharacter
