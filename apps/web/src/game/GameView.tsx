@@ -5,6 +5,7 @@ import * as THREE from "three";
 import RickTaylorCharacter, { type RickMotion } from "./characters/RickTaylorCharacter";
 import { RickTaylorCharacter3DHDPlayer } from "./characters/RickTaylorCharacter3DHD";
 import { CORRIDOR_COVERS, CORRIDOR_DOORS, MansionCorridor3 } from "./MansionCorridor3";
+import { HauntedCemetery, MansionBasement, UndergroundDungeon } from "./AdditionalStages";
 import { WebGPURenderer } from "three/webgpu";
 import MonsterProceduralCharacter from "./characters/MonsterProceduralCharacter";
 
@@ -14,9 +15,9 @@ type Props = {
   onScore:(points:number)=>void;
   onKill:()=>void;
   paused:boolean;
-  onStageChange:(stage:1|2|3)=>void;
+  onStageChange:(stage:1|2|3|4|5|6)=>void;
   graphicsQuality:GraphicsQuality;
-  initialStage?:1|2|3;
+  initialStage?:1|2|3|4|5|6;
   onPhase3Clear?:()=>void;
 };
 type WeaponId = "sickle" | "pipe" | "machete" | "shotgun";
@@ -527,7 +528,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
   const pendingShotgun=useRef<{timer:number;targetId:number|null}|null>(null);
   const macheteAttackVariant=useRef<"head"|"arm">("head");
   const grabVariant=useRef<"throw"|"piledriver">("throw");
-  const [phase,setPhase]=useState<1|2|3>(initialStage);
+  const [phase,setPhase]=useState<1|2|3|4|5|6>(initialStage);
   const [initialEnemiesVisible,setInitialEnemiesVisible]=useState(false);
   const [equipped,setEquipped]=useState<WeaponId|null>(initialStage===1?"sickle":null);
   const facing=useRef(1);
@@ -2102,7 +2103,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
         lastTpsHud.current=nextHud;
         onTpsHudUpdate(nextHud);
       }
-    }else if(phase===1){
+    }else if(phase===1||phase===5||phase===6){
       camera.position.x=THREE.MathUtils.damp(camera.position.x,targetX,3.8,dt);
       camera.position.z=18;
       camera.position.y=4.6;
@@ -2122,7 +2123,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
       camera.up.set(0,1,0);
       camera.lookAt(targetX,1.7+playerHeight,targetZ-2.6);
     }
-    if(phase!==3&&size.width>0){const aspect=size.width/Math.max(1,size.height);const baseHalfH=phase===1?5.4:7.4;const halfH=hdPhase2ZoomActive?baseHalfH/THREE.MathUtils.clamp(hdZoomCurrent.current,0.55,2.4):baseHalfH;const ortho=camera as THREE.OrthographicCamera;ortho.zoom=1;ortho.left=-halfH*aspect;ortho.right=halfH*aspect;ortho.top=halfH;ortho.bottom=-halfH;ortho.updateProjectionMatrix();}
+    if(phase!==3&&size.width>0){const aspect=size.width/Math.max(1,size.height);const baseHalfH=(phase===1||phase===5||phase===6)?5.4:7.4;const halfH=hdPhase2ZoomActive?baseHalfH/THREE.MathUtils.clamp(hdZoomCurrent.current,0.55,2.4):baseHalfH;const ortho=camera as THREE.OrthographicCamera;ortho.zoom=1;ortho.left=-halfH*aspect;ortho.right=halfH*aspect;ortho.top=halfH;ortho.bottom=-halfH;ortho.updateProjectionMatrix();}
   });
 
   return <group>
@@ -2136,7 +2137,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
         <pointLight key={`corridor-light-${lz}`} position={[0,3.55,lz]} intensity={14} distance={18} decay={1.65} color="#ffb37e"/>
       ))}
     </>}
-    {phase===1?<Exterior/>:phase===2?<MansionRoom player={player}/>:<MansionCorridor3 openedDoorsRef={openedCorridorDoors}/>}
+    {phase===1?<Exterior/>:phase===2?<MansionRoom player={player}/>:phase===3?<MansionCorridor3 openedDoorsRef={openedCorridorDoors}/>:phase===4?<MansionBasement/>:phase===5?<UndergroundDungeon/>:<HauntedCemetery/>}
     {phase===1&&<group position={[-24,0,0]}><mesh position={[0,0.02,0]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[0.48,0.56,32]}/><meshBasicMaterial color="#7d342d"/></mesh></group>}
     <group ref={player}>{useHDCharacter
       ? <RickTaylorCharacter3DHDPlayer motion={motion.current} equippedWeapon={equipped}/>
@@ -2205,7 +2206,7 @@ function World({onScore,onKill,paused,onStageChange,initialStage=1,onPhase3Clear
 
 export default function GameView({onScore,onKill,paused,onStageChange,graphicsQuality,initialStage=1,onPhase3Clear}:Props) {
   const [rendererMode,setRendererMode]=useState<"webgpu"|"webgl"|null>(null);
-  const [worldPhase,setWorldPhase]=useState<1|2|3>(initialStage);
+  const [worldPhase,setWorldPhase]=useState<1|2|3|4|5|6>(initialStage);
   const [phaseLoading,setPhaseLoading]=useState(true);
   const viewportRef=useRef<HTMLDivElement>(null);
   const zoomTargetRef=useRef(1);
@@ -2298,7 +2299,7 @@ export default function GameView({onScore,onKill,paused,onStageChange,graphicsQu
   const setAction=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"sweep"|"superJump"|"escorrao"|"headKick",value:boolean)=>{controls.current[key]=value;};
   const press=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"sweep"|"superJump"|"escorrao"|"headKick")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,true);};
   const release=(key:"attack"|"grab"|"jump"|"pickup"|"slide"|"sweep"|"superJump"|"escorrao"|"headKick")=>(e:ReactPointerEvent<HTMLButtonElement>)=>{e.preventDefault();setAction(key,false);};
-  const handleStageChange=(stage:1|2|3)=>{
+  const handleStageChange=(stage:1|2|3|4|5|6)=>{
     setWorldPhase(stage);
     if(stage===2)setHDZoom(1);
     onStageChange(stage);
